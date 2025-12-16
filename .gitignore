@@ -49,3 +49,7 @@ instance/
 # Quantum simulation cache
 *.qasm
 
+# Deployment
+.env
+.env.local
+

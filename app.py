@@ -146,5 +146,9 @@ def download_file(filename):
 if __name__ == '__main__':
     # Create templates directory if it doesn't exist
     os.makedirs('templates', exist_ok=True)
-    app.run(debug=True, host ='127.0.0.1', port=5000)
+    # Get port from environment variable (for production) or use 5000 for local development
+    port = int(os.environ.get('PORT', 5000))
+    # Use debug mode only in development (when PORT is not set)
+    debug_mode = os.environ.get('PORT') is None
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)
 
