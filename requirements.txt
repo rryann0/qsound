@@ -1,0 +1,8 @@
+qiskit>=0.45.0
+qiskit-aer>=0.13.0
+music21>=9.1.0
+numpy>=1.24.0
+scipy>=1.10.0
+flask>=3.0.0
+flask-cors>=4.0.0
+

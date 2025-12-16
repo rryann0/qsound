@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Music Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .control-group label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #555;
+        }
+        
+        .control-group input,
+        .control-group select {
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        .control-group input:focus,
+        .control-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            flex: 1;
+        }
+        
+        .btn-generate {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-generate:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-generate:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-download {
+            background: #4caf50;
+            color: white;
+        }
+        
+        .btn-download:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+        
+        .btn-download:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-play {
+            background: #2196f3;
+            color: white;
+        }
+        
+        .btn-play:hover {
+            background: #1976d2;
+            transform: translateY(-2px);
+        }
+        
+        .btn-play:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-play.playing {
+            background: #f44336;
+        }
+        
+        .btn-play.playing:hover {
+            background: #d32f2f;
+        }
+        
+        .audio-controls {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .audio-controls.active {
+            display: block;
+        }
+        
+        .audio-controls h3 {
+            margin-bottom: 15px;
+            color: #555;
+        }
+        
+        .playback-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .playback-buttons button {
+            flex: 0 0 auto;
+            padding: 12px 24px;
+        }
+        
+        .progress-container {
+            margin-top: 15px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.1s;
+        }
+        
+        .time-display {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.loading {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .notes-display {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .notes-display h3 {
+            margin-bottom: 15px;
+            color: #555;
+        }
+        
+        .notes-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+        }
+        
+        .note-item {
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            text-align: center;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .note-item.rest {
+            opacity: 0.5;
+            font-style: italic;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 20px;
+            margin-top: 30px;
+            border-radius: 4px;
+        }
+        
+        .info-box h3 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+        
+        .info-box ul {
+            margin-left: 20px;
+            color: #555;
+        }
+        
+        .info-box li {
+            margin: 8px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎵 Quantum Music Generator</h1>
+            <p>Create music using the power of quantum computing</p>
+        </div>
+        
+        <div class="content">
+            <div class="controls">
+                <div class="control-group">
+                    <label for="num_notes">Number of Notes</label>
+                    <input type="number" id="num_notes" value="16" min="4" max="64">
+                </div>
+                
+                <div class="control-group">
+                    <label for="base_note">Base Note</label>
+                    <select id="base_note">
+                        <option value="C4">C4</option>
+                        <option value="D4">D4</option>
+                        <option value="E4">E4</option>
+                        <option value="F4">F4</option>
+                        <option value="G4">G4</option>
+                        <option value="A4">A4</option>
+                        <option value="B4">B4</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="scale_type">Scale Type</label>
+                    <select id="scale_type">
+                        <option value="major">Major</option>
+                        <option value="minor">Minor</option>
+                        <option value="chromatic">Chromatic</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="tempo_bpm">Tempo (BPM)</label>
+                    <input type="number" id="tempo_bpm" value="120" min="60" max="200">
+                </div>
+                
+                <div class="control-group">
+                    <label for="composition_type">Composition Type</label>
+                    <select id="composition_type">
+                        <option value="melody">Melody</option>
+                        <option value="rhythm">Melody with Rhythm</option>
+                        <option value="full">Full Composition</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="button-group">
+                <button class="btn-generate" onclick="generateMusic()">Generate Quantum Music</button>
+                <button class="btn-download" id="downloadBtn" onclick="downloadMusic()" disabled>Download MIDI</button>
+            </div>
+            
+            <div class="status" id="status"></div>
+            
+            <div class="audio-controls" id="audioControls">
+                <h3>🎵 Playback Controls</h3>
+                <div class="playback-buttons">
+                    <button class="btn-play" id="playBtn" onclick="togglePlayback()" disabled>▶️ Play</button>
+                    <button class="btn-download" onclick="downloadMusic()" id="downloadBtn2" disabled>💾 Download</button>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="time-display">
+                        <span id="currentTime">0:00</span>
+                        <span id="totalTime">0:00</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="notes-display" id="notesDisplay" style="display: none;">
+                <h3>Generated Notes:</h3>
+                <div class="notes-list" id="notesList"></div>
+            </div>
+            
+            <div class="info-box">
+                <h3>How It Works</h3>
+                <ul>
+                    <li><strong>Quantum Superposition:</strong> Qubits are put into superposition states to create musical variety</li>
+                    <li><strong>Quantum Entanglement:</strong> Qubits are entangled to create correlated musical patterns</li>
+                    <li><strong>Measurement:</strong> Quantum measurements collapse to classical states, which are mapped to musical notes</li>
+                    <li><strong>Musical Mapping:</strong> Binary quantum states are converted to notes using music theory principles</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentFile = null;
+        let audioContext = null;
+        let isPlaying = false;
+        let currentNotes = [];
+        let startTime = null;
+        let playbackStartTime = null;
+        let animationFrameId = null;
+        let tempoBPM = 120;
+        
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+            status.style.display = 'block';
+        }
+        
+        function hideStatus() {
+            document.getElementById('status').style.display = 'none';
+        }
+        
+        async function generateMusic() {
+            const btn = document.querySelector('.btn-generate');
+            const downloadBtn = document.getElementById('downloadBtn');
+            
+            btn.disabled = true;
+            downloadBtn.disabled = true;
+            showStatus('Generating quantum music... This may take a moment.', 'loading');
+            
+            const params = {
+                num_notes: parseInt(document.getElementById('num_notes').value),
+                base_note: document.getElementById('base_note').value,
+                scale_type: document.getElementById('scale_type').value,
+                tempo_bpm: parseInt(document.getElementById('tempo_bpm').value),
+                type: document.getElementById('composition_type').value
+            };
+            
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(params)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentFile = data.file;
+                    tempoBPM = params.tempo_bpm;
+                    downloadBtn.disabled = false;
+                    document.getElementById('downloadBtn2').disabled = false;
+                    showStatus('✅ Music generated successfully! You can play it now or download the MIDI file.', 'success');
+                    
+                    // Display notes
+                    displayNotes(data.notes);
+                    
+                    // Prepare notes for playback
+                    prepareNotesForPlayback(data.notes);
+                } else {
+                    showStatus('❌ Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showStatus('❌ Error: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+        
+        function displayNotes(notes) {
+            const notesDisplay = document.getElementById('notesDisplay');
+            const notesList = document.getElementById('notesList');
+            
+            notesList.innerHTML = '';
+            notes.forEach(note => {
+                const noteItem = document.createElement('div');
+                noteItem.className = 'note-item' + (note.note === 'Rest' ? ' rest' : '');
+                noteItem.textContent = note.note;
+                notesList.appendChild(noteItem);
+            });
+            
+            notesDisplay.style.display = 'block';
+        }
+        
+        function downloadMusic() {
+            if (currentFile) {
+                window.location.href = '/api/download/' + currentFile;
+            }
+        }
+        
+        function prepareNotesForPlayback(notesInfo) {
+            // Check if we have valid note data
+            if (!notesInfo || !Array.isArray(notesInfo) || notesInfo.length === 0) {
+                console.error('No valid notes data received');
+                showStatus('⚠️ Could not prepare notes for playback. Download is still available.', 'error');
+                return;
+            }
+            
+            // Convert note information to playable format
+            // Duration is in quarterLength, convert to seconds based on tempo
+            const secondsPerQuarter = 60 / tempoBPM;
+            const notes = [];
+            let currentTime = 0;
+            
+            notesInfo.forEach((noteInfo) => {
+                // Validate note info
+                if (!noteInfo || !noteInfo.note) {
+                    console.warn('Invalid note info:', noteInfo);
+                    return;
+                }
+                
+                if (noteInfo.note !== 'Rest' && noteInfo.note !== 'rest') {
+                    const duration = (noteInfo.duration || 0.5) * secondsPerQuarter;
+                    if (duration > 0) {
+                        notes.push({
+                            note: noteInfo.note,
+                            startTime: currentTime,
+                            duration: duration,
+                            velocity: 0.7
+                        });
+                    }
+                }
+                // Always advance time, even for rests
+                currentTime += (noteInfo.duration || 0.5) * secondsPerQuarter;
+            });
+            
+            if (notes.length === 0) {
+                console.warn('No playable notes found (all rests?)');
+                showStatus('⚠️ No playable notes found (composition may be all rests). Download is still available.', 'error');
+                return;
+            }
+            
+            currentNotes = notes;
+            
+            // Show audio controls
+            const audioControls = document.getElementById('audioControls');
+            audioControls.classList.add('active');
+            
+            // Enable play button
+            const playBtn = document.getElementById('playBtn');
+            playBtn.disabled = false;
+            
+            // Calculate total duration
+            const totalDuration = currentTime;
+            updateTotalTime(totalDuration);
+        }
+        
+        function togglePlayback() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            const playBtn = document.getElementById('playBtn');
+            
+            if (isPlaying) {
+                stopPlayback();
+            } else {
+                startPlayback();
+            }
+        }
+        
+        async function startPlayback() {
+            if (currentNotes.length === 0) return;
+            
+            // Resume audio context if suspended
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+            
+            isPlaying = true;
+            const playBtn = document.getElementById('playBtn');
+            playBtn.textContent = '⏸️ Pause';
+            playBtn.classList.add('playing');
+            
+            playbackStartTime = audioContext.currentTime;
+            startTime = Date.now();
+            
+            // Play all notes
+            currentNotes.forEach(noteData => {
+                playNote(noteData, playbackStartTime);
+            });
+            
+            // Start progress animation
+            updateProgress();
+        }
+        
+        function stopPlayback() {
+            isPlaying = false;
+            const playBtn = document.getElementById('playBtn');
+            playBtn.textContent = '▶️ Play';
+            playBtn.classList.remove('playing');
+            
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            
+            // Reset progress
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('currentTime').textContent = '0:00';
+            
+            // Note: We can't easily stop oscillators once started, so we'll just reset the UI
+            // The notes will finish playing naturally
+        }
+        
+        function playNote(noteData, startTime) {
+            // Get frequency from note name
+            const frequency = getFrequencyFromNote(noteData.note);
+            
+            if (!frequency) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = frequency;
+            oscillator.type = 'sine';
+            
+            // Envelope for smoother sound
+            const now = audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(noteData.velocity * 0.3, now + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + noteData.duration);
+            
+            oscillator.start(startTime + noteData.startTime);
+            oscillator.stop(startTime + noteData.startTime + noteData.duration);
+        }
+        
+        function getFrequencyFromNote(noteName) {
+            // Parse note name like "C4", "D#4", "Eb4", etc.
+            // Handle both sharp (#) and flat (b) notation
+            const noteMap = {
+                'C': 0, 'C#': 1, 'DB': 1, 'D': 2, 'D#': 3, 'EB': 3,
+                'E': 4, 'F': 5, 'F#': 6, 'GB': 6, 'G': 7, 'G#': 8,
+                'AB': 8, 'A': 9, 'A#': 10, 'BB': 10, 'B': 11
+            };
+            
+            // Try to match patterns like "C4", "C#4", "Db4", "C-4", etc.
+            const match = noteName.match(/([A-G])([#bB-]?)(\d+)/i);
+            if (!match) return null;
+            
+            const baseNote = match[1].toUpperCase();
+            const accidental = match[2].toUpperCase();
+            const octave = parseInt(match[3]);
+            
+            // Build note key
+            let noteKey = baseNote;
+            if (accidental === '#' || accidental === 'B' || accidental === '-') {
+                if (accidental === 'B' || accidental === '-') {
+                    // Handle flat notation (B or -)
+                    noteKey = baseNote + 'B';
+                } else {
+                    noteKey = baseNote + '#';
+                }
+            }
+            
+            const semitone = noteMap[noteKey];
+            if (semitone === undefined) {
+                // Fallback: try just the base note
+                const baseSemitone = noteMap[baseNote];
+                if (baseSemitone === undefined) return null;
+                const adjustedSemitone = accidental === '#' ? baseSemitone + 1 : 
+                                       (accidental === 'B' || accidental === '-') ? baseSemitone - 1 : baseSemitone;
+                const finalSemitone = ((adjustedSemitone % 12) + 12) % 12;
+                
+                // A4 = 440 Hz
+                const A4 = 440;
+                const semitonesFromA4 = (octave - 4) * 12 + finalSemitone - 9;
+                return A4 * Math.pow(2, semitonesFromA4 / 12);
+            }
+            
+            // A4 = 440 Hz
+            const A4 = 440;
+            const semitonesFromA4 = (octave - 4) * 12 + semitone - 9;
+            return A4 * Math.pow(2, semitonesFromA4 / 12);
+        }
+        
+        function updateProgress() {
+            if (!isPlaying) return;
+            
+            const totalDuration = currentNotes.length > 0 
+                ? Math.max(...currentNotes.map(n => n.startTime + n.duration))
+                : 0;
+            
+            if (totalDuration === 0) return;
+            
+            const elapsed = (Date.now() - startTime) / 1000;
+            const progress = Math.min((elapsed / totalDuration) * 100, 100);
+            
+            document.getElementById('progressFill').style.width = progress + '%';
+            document.getElementById('currentTime').textContent = formatTime(elapsed);
+            
+            if (elapsed >= totalDuration) {
+                stopPlayback();
+            } else {
+                animationFrameId = requestAnimationFrame(updateProgress);
+            }
+        }
+        
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        function updateTotalTime(seconds) {
+            document.getElementById('totalTime').textContent = formatTime(seconds);
+        }
+    </script>
+</body>
+</html>
+
