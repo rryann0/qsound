@@ -1,4 +1,4 @@
-"""The quantum part. Three kinds of circuit decide everything the music does.
+"""The quantum part. Up to four kinds of circuit decide everything the music does.
 
 groove:  one qubit per drum, bass or chord hit in a bar. Each qubit is rotated so its chance of
          measuring 1 matches the style, entangled so hits depend on each other, then given a phase
@@ -6,6 +6,7 @@ groove:  one qubit per drum, bass or chord hit in a bar. Each qubit is rotated s
 melody:  three qubits per 16th note: does a note start, which way it moves, how far. The same three
          layers, and here the interference fringes shape the melody's arcs. Each shot is a two-bar motif.
 harmony: a coined quantum walk around the circle of fifths. Each measured position is the next chord.
+glitch:  in styles that break their own beat, three qubits per 16th note: does it break here, and how.
 
 The interference layer matters. A circuit of only Ry and controlled-Ry gates, where no qubit is rotated
 after it has acted as a control, gives exactly the statistics of ordinary conditional coin flips. Phases
@@ -132,9 +133,21 @@ def leap_q(slot):
     return 2 * MOTIF_SLOTS + slot
 
 
-def groove_circuit(style, entanglement, interference=0.0):
+def fire_q(step):
+    return step
+
+
+def kind_q(step):
+    return STEPS + step
+
+
+def form_q(step):
+    return 2 * STEPS + step
+
+
+def groove_circuit(style, entanglement, interference=0.0, id_="groove", name="Groove"):
     labels = [f"{v} {s + 1}" for s in range(STEPS) for v in VOICES]
-    circuit = Circuit("groove", "Groove", STEPS * len(VOICES), labels)
+    circuit = Circuit(id_, name, STEPS * len(VOICES), labels)
 
     def q(step, voice):
         return step * len(VOICES) + VOICES.index(voice)
@@ -202,6 +215,39 @@ def melody_circuit(style, entanglement, interference=0.0):
     return circuit
 
 
+def glitch_circuit(style, entanglement, interference=0.0):
+    """One bar of edits, in three neighbor chains: where the beat breaks, then two qubits for how."""
+    labels = [f"{w} {s + 1}" for w in ("glitch", "kind", "form") for s in range(STEPS)]
+    circuit = Circuit("glitch", "Glitch", STEPS * 3, labels)
+    chance = style["glitch"]
+
+    circuit.layer = "Prepare"
+    for s in range(STEPS):
+        circuit.ry(angle(chance[s]), fire_q(s))
+        circuit.ry(math.pi / 2, kind_q(s))
+        circuit.ry(math.pi / 2, form_q(s))
+
+    circuit.layer = "Entangle"
+    for s in range(STEPS - 1):
+        # a glitch tends to run on into the next step, which makes it longer
+        circuit.cry(entanglement * 0.9, fire_q(s), fire_q(s + 1))
+        # one kind of edit tends to carry on, and its form tends to change
+        circuit.cry(entanglement * 1.1, kind_q(s), kind_q(s + 1))
+        circuit.cry(-entanglement * 0.8, form_q(s), form_q(s + 1))
+
+    if interference > 0:
+        circuit.layer = "Interfere"
+        turns = 1 + 3 * interference
+        for s in range(STEPS):
+            phase = 2 * math.pi * turns * s / STEPS
+            circuit.rz(phase, kind_q(s))
+            circuit.ry(interference * math.pi / 2, kind_q(s))
+            circuit.rz(phase, fire_q(s))
+            circuit.ry(interference * 0.35, fire_q(s))
+    circuit.measure_all()
+    return circuit
+
+
 def walk_circuit(index, start, entanglement, interference=0.0):
     """A coined quantum walk on a ring of chords, starting from the chord before this one."""
     position_qubits = 3
@@ -256,13 +302,18 @@ def _shots(clean, noise):
     return 10 if noise > 0 else clean
 
 
-def run_groove(style, entanglement, interference, noise, seed):
-    circuit = groove_circuit(style, entanglement, interference)
+def run_groove(style, entanglement, interference, noise, seed, id_="groove", name="Groove"):
+    circuit = groove_circuit(style, entanglement, interference, id_, name)
     return circuit, _run(_chain, circuit, _shots(64, noise), seed, noise)
 
 
 def run_melody(style, entanglement, interference, noise, seed):
     circuit = melody_circuit(style, entanglement, interference)
+    return circuit, _run(_chain, circuit, _shots(32, noise), seed, noise)
+
+
+def run_glitch(style, entanglement, interference, noise, seed):
+    circuit = glitch_circuit(style, entanglement, interference)
     return circuit, _run(_chain, circuit, _shots(32, noise), seed, noise)
 
 

@@ -103,6 +103,91 @@ class ComposeTest(unittest.TestCase):
         self.assertNotEqual(compose(seed=7)["tracks"]["kick"], compose(seed=7, noise=1.0)["tracks"]["kick"])
 
 
+class StyleTest(unittest.TestCase):
+    def glitches(self, piece):
+        return [f for f in piece["fx"] if f["kind"] != "section"]
+
+    def test_hyperpop_flips_between_sweet_hooks_and_crushed_breakdowns(self):
+        piece = compose(style="hyperpop", seed=3)
+        self.assertEqual([s["name"] for s in piece["sections"]], ["Verse", "Hook", "Crash", "Hook"])
+        crash = piece["sections"][2]
+        inside = lambda n: crash["start"] * 16 <= n["s"] < crash["end"] * 16
+        self.assertFalse([n for n in piece["tracks"]["lead"] if inside(n)])
+        crash_chords = [n for n in piece["tracks"]["chords"] if inside(n)]
+        self.assertTrue(crash_chords)
+        self.assertTrue(all(n.get("x") == "gtr" for n in crash_chords))
+        self.assertTrue(all(n["src"]["c"] == "crash" for n in crash_chords))
+        self.assertFalse([n for n in piece["tracks"]["chords"] if not inside(n) and n.get("x") == "gtr"])
+
+    def test_every_glitch_comes_from_a_measured_qubit(self):
+        for seed in (3, 11, 40):
+            piece = compose(style="hyperpop", seed=seed)
+            circuit = next(c for c in piece["circuits"] if c["id"] == "glitch")
+            marks = self.glitches(piece)
+            self.assertGreater(len(marks), piece["bars"])
+            for mark in marks:
+                self.assertEqual(mark["src"]["c"], "glitch")
+                self.assertLess(mark["src"]["q"], circuit["qubits"])
+                if not mark.get("forced") and mark["src"]["shot"] < len(circuit["firstShots"]):
+                    self.assertEqual(circuits.bits(circuit["firstShots"][mark["src"]["shot"]])[mark["src"]["q"]], 1)
+
+    def test_glitches_never_overlap(self):
+        for bars in (8, 16, 32):
+            marks = self.glitches(compose(style="hyperpop", bars=bars, seed=5))
+            for a, b in zip(marks, marks[1:]):
+                self.assertLessEqual(a["s"] + a["d"], b["s"])
+            self.assertLessEqual(marks[-1]["s"] + marks[-1]["d"], bars * 16)
+
+    def test_every_section_change_breaks_the_beat(self):
+        piece = compose(style="hyperpop", bars=32, seed=5)
+        forced = {f["s"] for f in self.glitches(piece) if f.get("forced")}
+        names = piece["sections"]
+        for here, after in zip(names, names[1:]):
+            if here["name"] != after["name"]:
+                self.assertIn(after["start"] * 16 - 4, forced)
+
+    def test_noise_makes_more_glitches(self):
+        count = lambda noise: sum(len(self.glitches(compose(style="hyperpop", noise=noise, seed=s))) for s in (5, 36, 67, 98))
+        self.assertGreater(count(0.8), count(0))
+
+    def test_only_hyperpop_glitches(self):
+        self.assertFalse(compose(style="softclub", seed=3)["fx"])
+        self.assertFalse(compose(style="rnb", seed=3)["fx"])
+
+    def test_rnb_has_a_pocket(self):
+        piece = compose(style="rnb", seed=3)
+        hook = next(s for s in piece["sections"] if s["name"] == "Hook")
+        bars = hook["end"] - hook["start"]
+        inside = lambda n: hook["start"] * 16 <= n["s"] < hook["end"] * 16
+        hits = {n["s"] for n in piece["tracks"]["chords"] if inside(n) and n["d"] < 8}
+        self.assertGreaterEqual(len(hits) / bars, 3)
+        self.assertGreater(sum(1 for h in hits if h % 4) / len(hits), 0.5)
+        bass = [n for n in piece["tracks"]["bass"] if inside(n)]
+        self.assertGreater(sum(1 for n in bass if n["s"] % 4) / len(bass), 0.5)
+        self.assertGreater(len({n["m"] for n in bass}), 3)
+
+    def test_rnb_pushes_chords_in_early(self):
+        pushes = 0
+        for seed in (3, 11, 40, 77):
+            piece = compose(style="rnb", seed=seed)
+            for note in piece["tracks"]["chords"]:
+                bar = int(note["s"] // 16)
+                if note["s"] % 16 >= 14 and bar + 1 < piece["bars"] and note["m"] in piece["chords"][bar + 1]["pitches"]:
+                    pushes += 1
+        self.assertGreater(pushes, 0)
+
+    def test_new_styles_run_with_noise_at_every_length(self):
+        for style in ("hyperpop", "rnb"):
+            for bars in (8, 16, 32):
+                piece = compose(style=style, bars=bars, noise=0.6, seed=9)
+                self.assertTrue(piece["tracks"]["bass"])
+
+    def test_fractional_notes_never_break_the_ending(self):
+        for seed in range(12):
+            compose(style="hyperpop", bars=8, seed=seed)
+            compose(style="rnb", bars=8, seed=seed)
+
+
 class ApiTest(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
