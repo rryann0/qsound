@@ -1,887 +1,143 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum Music Generator</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-primary: #1a1a1a;
-            --bg-secondary: #252525;
-            --bg-tertiary: #2d2d2d;
-            --bg-hover: #353535;
-            --accent-primary: #6366f1;
-            --accent-secondary: #8b5cf6;
-            --accent-hover: #7c3aed;
-            --text-primary: #ffffff;
-            --text-secondary: #b3b3b3;
-            --text-muted: #808080;
-            --border-color: #3a3a3a;
-            --grid-color: #2a2a2a;
-            --success: #10b981;
-            --error: #ef4444;
-            --playhead: #ff4444;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            height: 100vh;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .daw-header {
-            background: var(--bg-secondary);
-            border-bottom: 1px solid var(--border-color);
-            padding: 0.75rem 1.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-shrink: 0;
-        }
-
-        .daw-title {
-            font-size: 1.125rem;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-
-        .transport-controls {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .transport-btn {
-            width: 40px;
-            height: 40px;
-            border: none;
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-            border-radius: 4px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-            font-size: 1.25rem;
-        }
-
-        .transport-btn:hover {
-            background: var(--bg-hover);
-        }
-
-        .transport-btn.play {
-            background: var(--success);
-            width: 48px;
-            height: 48px;
-        }
-
-        .transport-btn.play:hover {
-            background: #059669;
-        }
-
-        .transport-btn.play.playing {
-            background: var(--error);
-        }
-
-        .transport-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .daw-container {
-            display: flex;
-            flex: 1;
-            overflow: hidden;
-        }
-
-        .sidebar {
-            width: 280px;
-            background: var(--bg-secondary);
-            border-right: 1px solid var(--border-color);
-            padding: 1.5rem;
-            overflow-y: auto;
-            flex-shrink: 0;
-        }
-
-        .sidebar-section {
-            margin-bottom: 2rem;
-        }
-
-        .sidebar-section h3 {
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: var(--text-muted);
-            margin-bottom: 1rem;
-        }
-
-        .control-item {
-            margin-bottom: 1rem;
-        }
-
-        .control-item label {
-            display: block;
-            font-size: 0.8125rem;
-            color: var(--text-secondary);
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-        }
-
-        .control-item input,
-        .control-item select {
-            width: 100%;
-            padding: 0.625rem 0.75rem;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            color: var(--text-primary);
-            font-size: 0.875rem;
-            font-family: inherit;
-        }
-
-        .control-item input:focus,
-        .control-item select:focus {
-            outline: none;
-            border-color: var(--accent-primary);
-        }
-
-        .btn-generate {
-            width: 100%;
-            padding: 0.75rem;
-            background: var(--accent-primary);
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-weight: 600;
-            font-size: 0.875rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-top: 1rem;
-        }
-
-        .btn-generate:hover:not(:disabled) {
-            background: var(--accent-hover);
-        }
-
-        .btn-generate:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .btn-download {
-            width: 100%;
-            padding: 0.75rem;
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            font-weight: 500;
-            font-size: 0.875rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-top: 0.5rem;
-        }
-
-        .btn-download:hover:not(:disabled) {
-            background: var(--bg-hover);
-        }
-
-        .btn-download:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .status-message {
-            padding: 0.75rem;
-            border-radius: 4px;
-            font-size: 0.8125rem;
-            margin-top: 1rem;
-            display: none;
-        }
-
-        .status-message.success {
-            background: rgba(16, 185, 129, 0.1);
-            color: var(--success);
-            border: 1px solid rgba(16, 185, 129, 0.2);
-            display: block;
-        }
-
-        .status-message.error {
-            background: rgba(239, 68, 68, 0.1);
-            color: var(--error);
-            border: 1px solid rgba(239, 68, 68, 0.2);
-            display: block;
-        }
-
-        .status-message.loading {
-            background: rgba(99, 102, 241, 0.1);
-            color: var(--accent-primary);
-            border: 1px solid rgba(99, 102, 241, 0.2);
-            display: block;
-        }
-
-        .arrangement-view {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            background: var(--bg-primary);
-        }
-
-        .timeline-header {
-            background: var(--bg-secondary);
-            border-bottom: 1px solid var(--border-color);
-            padding: 0.5rem 1rem;
-            display: flex;
-            align-items: center;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            font-variant-numeric: tabular-nums;
-        }
-
-        .piano-roll-container {
-            flex: 1;
-            overflow: auto;
-            position: relative;
-            background: var(--bg-primary);
-        }
-
-        .piano-roll {
-            display: flex;
-            min-height: 100%;
-        }
-
-        .piano-keys {
-            width: 60px;
-            background: var(--bg-secondary);
-            border-right: 1px solid var(--border-color);
-            flex-shrink: 0;
-            position: sticky;
-            left: 0;
-            z-index: 10;
-        }
-
-        .piano-key {
-            height: 24px;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            align-items: center;
-            padding-left: 0.5rem;
-            font-size: 0.6875rem;
-            color: var(--text-muted);
-            position: relative;
-        }
-
-        .piano-key.black {
-            background: var(--bg-tertiary);
-            color: var(--text-secondary);
-        }
-
-        .piano-key.white {
-            background: var(--bg-secondary);
-        }
-
-        .timeline-grid {
-            flex: 1;
-            position: relative;
-            min-width: 2000px;
-        }
-
-        .timeline-ruler {
-            height: 30px;
-            background: var(--bg-secondary);
-            border-bottom: 1px solid var(--border-color);
-            position: sticky;
-            top: 0;
-            z-index: 5;
-            display: flex;
-            align-items: center;
-        }
-
-        .timeline-marker {
-            position: absolute;
-            height: 100%;
-            border-left: 1px solid var(--grid-color);
-            font-size: 0.625rem;
-            color: var(--text-muted);
-            padding-left: 0.25rem;
-            padding-top: 0.25rem;
-        }
-
-        .timeline-marker.beat {
-            border-left-color: var(--border-color);
-        }
-
-        .timeline-marker.bar {
-            border-left-width: 2px;
-            border-left-color: var(--text-muted);
-        }
-
-        .playhead {
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            width: 2px;
-            background: var(--playhead);
-            z-index: 100;
-            pointer-events: none;
-            box-shadow: 0 0 4px rgba(255, 68, 68, 0.5);
-        }
-
-        .playhead::before {
-            content: '';
-            position: absolute;
-            top: -4px;
-            left: -4px;
-            width: 10px;
-            height: 10px;
-            background: var(--playhead);
-            border-radius: 50%;
-        }
-
-        .track-lane {
-            height: 24px;
-            border-bottom: 1px solid var(--border-color);
-            position: relative;
-            background: repeating-linear-gradient(
-                90deg,
-                transparent,
-                transparent 48px,
-                var(--grid-color) 48px,
-                var(--grid-color) 49px
-            );
-        }
-
-        .note-block {
-            position: absolute;
-            height: 22px;
-            background: var(--accent-primary);
-            border-radius: 2px;
-            border: 1px solid var(--accent-secondary);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            padding: 0 0.25rem;
-            font-size: 0.625rem;
-            color: white;
-            font-weight: 500;
-            transition: all 0.1s;
-            z-index: 1;
-        }
-
-        .note-block:hover {
-            background: var(--accent-hover);
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
-        }
-
-        .note-block.rest {
-            background: var(--bg-tertiary);
-            border-color: var(--border-color);
-            opacity: 0.3;
-        }
-
-        .empty-state {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: var(--text-muted);
-            font-size: 0.875rem;
-        }
-
-        .time-display {
-            margin-left: auto;
-            font-variant-numeric: tabular-nums;
-            color: var(--text-secondary);
-        }
-
-        .zoom-controls {
-            display: flex;
-            gap: 0.5rem;
-            margin-left: 1rem;
-        }
-
-        .zoom-btn {
-            width: 32px;
-            height: 32px;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border-color);
-            color: var(--text-secondary);
-            border-radius: 4px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.875rem;
-        }
-
-        .zoom-btn:hover {
-            background: var(--bg-hover);
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QSound: music composed by qubits</title>
+  <meta name="description" content="Compose music from measured quantum circuits. Every drum hit, chord and melody note comes from a qubit, and you can click any note to see which one.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fragment+Mono&family=Host+Grotesk:wght@400..700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
 <body>
-    <div class="daw-header">
-        <div class="daw-title">Quantum Music Generator</div>
-        <div class="transport-controls">
-            <button class="transport-btn play" id="playBtn" onclick="togglePlayback()" disabled>
-                <span id="playIcon">▶</span>
-            </button>
-            <button class="transport-btn" onclick="stopPlayback()" id="stopBtn" disabled>⏹</button>
-            <div class="time-display" id="timeDisplay">0:00 / 0:00</div>
-        </div>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+      <symbol id="i-loop" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 11v-1a4 4 0 0 1 4-4h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m7 22-4-4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 13v1a4 4 0 0 1-4 4H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="m18 14 4 4-4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m18 2 4 4-4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 6h1.972a4 4 0 0 1 3.6 2.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    </defs>
+  </svg>
+
+  <header class="top">
+    <h1 class="logo"><img src="{{ url_for('static', filename='img/qsound.png') }}" alt="QSound" width="640" height="115"></h1>
+
+    <div class="transport" role="group" aria-label="Transport">
+      <button class="gel gel--round" id="play" aria-label="Play" title="Play or pause (Space)"><svg><use href="#i-play"/></svg></button>
+      <button class="gel gel--small" id="stop" aria-label="Stop and go back to the start" title="Stop"><svg><use href="#i-stop"/></svg></button>
+      <button class="gel gel--small is-on" id="loop" aria-pressed="true" aria-label="Loop" title="Loop"><svg><use href="#i-loop"/></svg></button>
     </div>
 
-    <div class="daw-container">
-        <div class="sidebar">
-            <div class="sidebar-section">
-                <h3>Generation</h3>
-                <div class="control-item">
-                    <label>Number of Notes</label>
-                    <input type="number" id="num_notes" value="16" min="4" max="64">
-                </div>
-                <div class="control-item">
-                    <label>Base Note</label>
-                    <select id="base_note">
-                        <option value="C4">C4</option>
-                        <option value="D4">D4</option>
-                        <option value="E4">E4</option>
-                        <option value="F4">F4</option>
-                        <option value="G4">G4</option>
-                        <option value="A4">A4</option>
-                        <option value="B4">B4</option>
-                    </select>
-                </div>
-                <div class="control-item">
-                    <label>Scale Type</label>
-                    <select id="scale_type">
-                        <option value="major">Major</option>
-                        <option value="minor">Minor</option>
-                        <option value="chromatic">Chromatic</option>
-                    </select>
-                </div>
-                <div class="control-item">
-                    <label>Tempo (BPM)</label>
-                    <input type="number" id="tempo_bpm" value="120" min="60" max="200">
-                </div>
-                <div class="control-item">
-                    <label>Composition Type</label>
-                    <select id="composition_type">
-                        <option value="melody">Melody</option>
-                        <option value="rhythm">Melody with Rhythm</option>
-                        <option value="full">Full Composition</option>
-                    </select>
-                </div>
-                <button class="btn-generate" onclick="generateMusic()" id="generateBtn">Generate</button>
-                <button class="btn-download" onclick="downloadMusic()" id="downloadBtn" disabled>Download MIDI</button>
-                <div class="status-message" id="status"></div>
-            </div>
-        </div>
-
-        <div class="arrangement-view">
-            <div class="timeline-header">
-                <div class="zoom-controls">
-                    <button class="zoom-btn" onclick="zoomOut()">−</button>
-                    <button class="zoom-btn" onclick="zoomIn()">+</button>
-                </div>
-            </div>
-            <div class="piano-roll-container" id="pianoRollContainer">
-                <div class="piano-roll">
-                    <div class="piano-keys" id="pianoKeys"></div>
-                    <div class="timeline-grid" id="timelineGrid">
-                        <div class="timeline-ruler" id="timelineRuler"></div>
-                        <div class="playhead" id="playhead"></div>
-                        <div id="trackLanes"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div class="lcd" aria-label="Now playing">
+      <div class="lcd__cell lcd__cell--wide"><span>Position</span><b id="lcd-pos">001.1.1</b></div>
+      <div class="lcd__cell"><span>Time</span><b id="lcd-time">0:00 / 0:00</b></div>
+      <div class="lcd__cell"><span>Chord</span><b id="lcd-chord">–</b></div>
+      <div class="lcd__cell"><span>Section</span><b id="lcd-section">–</b></div>
+      <div class="lcd__cell"><span>Tempo</span><b id="lcd-bpm">–</b></div>
+      <canvas class="lcd__meter" id="meter" width="120" height="44" aria-hidden="true"></canvas>
     </div>
-    
-    <script>
-        let currentFile = null;
-        let audioContext = null;
-        let isPlaying = false;
-        let currentNotes = [];
-        let startTime = null;
-        let playbackStartTime = null;
-        let animationFrameId = null;
-        let tempoBPM = 120;
-        let pixelsPerBeat = 48;
-        let currentTimePosition = 0;
-        let currentNotesData = [];
 
-        // Initialize piano keys
-        const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-        const octaves = [6, 5, 4, 3, 2, 1];
-        const pianoKeysContainer = document.getElementById('pianoKeys');
-        
-        octaves.forEach(octave => {
-            noteNames.reverse().forEach(note => {
-                const key = document.createElement('div');
-                key.className = `piano-key ${note.includes('#') ? 'black' : 'white'}`;
-                key.textContent = note + octave;
-                pianoKeysContainer.appendChild(key);
-            });
-            noteNames.reverse();
-        });
+    <div class="exports" role="group" aria-label="Export">
+      <button class="pill" id="x-wav">WAV</button>
+      <button class="pill" id="x-midi">MIDI</button>
+      <button class="pill" id="x-qasm">Circuits</button>
+      <button class="pill" id="x-json">Record</button>
+    </div>
+  </header>
 
-        function showStatus(message, type) {
-            const status = document.getElementById('status');
-            status.textContent = message;
-            status.className = 'status-message ' + type;
-        }
+  <aside class="composer panel" aria-label="Composer">
+    <fieldset class="styles">
+      <legend>Style</legend>
+      {% for s in styles %}
+      <label class="style">
+        <input type="radio" name="style" value="{{ s.id }}" data-bpm="{{ s.bpm }}" data-mode="{{ s.mode }}" {% if loop.first %}checked{% endif %}>
+        <span class="style__name">{{ s.name }}</span>
+        <span class="style__blurb">{{ s.blurb }}</span>
+      </label>
+      {% endfor %}
+    </fieldset>
 
-        function hideStatus() {
-            document.getElementById('status').style.display = 'none';
-        }
+    <div class="row2">
+      <label class="field">Key
+        <select id="key">{% for k in keys %}<option {% if k == 'A' %}selected{% endif %}>{{ k }}</option>{% endfor %}</select>
+      </label>
+      <label class="field">Mode
+        <select id="mode">{% for m in modes %}<option>{{ m }}</option>{% endfor %}</select>
+      </label>
+    </div>
 
-        async function generateMusic() {
-            const btn = document.getElementById('generateBtn');
-            const downloadBtn = document.getElementById('downloadBtn');
-            const playBtn = document.getElementById('playBtn');
-            const stopBtn = document.getElementById('stopBtn');
-            
-            btn.disabled = true;
-            downloadBtn.disabled = true;
-            playBtn.disabled = true;
-            stopBtn.disabled = true;
-            showStatus('Generating...', 'loading');
-            
-            const params = {
-                num_notes: parseInt(document.getElementById('num_notes').value),
-                base_note: document.getElementById('base_note').value,
-                scale_type: document.getElementById('scale_type').value,
-                tempo_bpm: parseInt(document.getElementById('tempo_bpm').value),
-                type: document.getElementById('composition_type').value
-            };
-            
-            try {
-                const response = await fetch('/api/generate', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(params)
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    currentFile = data.file;
-                    tempoBPM = params.tempo_bpm;
-                    downloadBtn.disabled = false;
-                    showStatus('Generated successfully', 'success');
-                    
-                    currentNotesData = data.notes;
-                    visualizeNotes(data.notes);
-                    prepareNotesForPlayback(data.notes);
-                    playBtn.disabled = false;
-                    stopBtn.disabled = false;
-                } else {
-                    showStatus('Error: ' + data.error, 'error');
-                }
-            } catch (error) {
-                showStatus('Error: ' + error.message, 'error');
-            } finally {
-                btn.disabled = false;
-            }
-        }
+    <label class="field">Tempo <output id="bpm-out">122</output>
+      <input type="range" id="bpm" min="60" max="190" value="122">
+    </label>
 
-        function visualizeNotes(notes) {
-            const trackLanes = document.getElementById('trackLanes');
-            const timelineRuler = document.getElementById('timelineRuler');
-            trackLanes.innerHTML = '';
-            timelineRuler.innerHTML = '';
-            
-            const beatsPerBar = 4;
-            const totalBeats = Math.ceil(notes.length / 2);
-            const totalBars = Math.ceil(totalBeats / beatsPerBar);
-            
-            // Create timeline ruler
-            for (let bar = 0; bar <= totalBars; bar++) {
-                for (let beat = 0; beat < beatsPerBar; beat++) {
-                    const position = (bar * beatsPerBar + beat) * pixelsPerBeat;
-                    const marker = document.createElement('div');
-                    marker.className = 'timeline-marker beat';
-                    marker.style.left = position + 'px';
-                    if (beat === 0) {
-                        marker.className += ' bar';
-                        marker.textContent = bar + 1;
-                    }
-                    timelineRuler.appendChild(marker);
-                }
-            }
+    <fieldset class="segmented">
+      <legend>Length in bars</legend>
+      {% for b in bars %}
+      <label><input type="radio" name="bars" value="{{ b }}" {% if b == 16 %}checked{% endif %}><span>{{ b }}</span></label>
+      {% endfor %}
+    </fieldset>
 
-            // Create track lanes and note blocks
-            let currentTime = 0;
-            const secondsPerQuarter = 60 / tempoBPM;
-            
-            notes.forEach((noteInfo, index) => {
-                const duration = (noteInfo.duration || 0.5) * secondsPerQuarter;
-                const startBeat = currentTime / secondsPerQuarter;
-                const width = duration / secondsPerQuarter * pixelsPerBeat;
-                const left = startBeat * pixelsPerBeat;
-                
-                if (noteInfo.note !== 'Rest') {
-                    const noteBlock = document.createElement('div');
-                    noteBlock.className = 'note-block';
-                    noteBlock.style.left = left + 'px';
-                    noteBlock.style.width = Math.max(width, 4) + 'px';
-                    noteBlock.textContent = noteInfo.note;
-                    noteBlock.title = `${noteInfo.note} - ${noteInfo.duration}q`;
-                    noteBlock.setAttribute('data-duration', noteInfo.duration);
-                    
-                    // Find or create track lane for this note
-                    let lane = trackLanes.querySelector(`[data-note="${noteInfo.note}"]`);
-                    if (!lane) {
-                        lane = document.createElement('div');
-                        lane.className = 'track-lane';
-                        lane.setAttribute('data-note', noteInfo.note);
-                        trackLanes.appendChild(lane);
-                    }
-                    lane.appendChild(noteBlock);
-                }
-                
-                currentTime += duration;
-            });
+    <label class="field">Entanglement <output id="ent-out">80%</output>
+      <input type="range" id="ent" min="0" max="100" value="80">
+      <small>Low: each hit is on its own, chords stay predictable. High: bass locks to kick, melodies run, chords roam.</small>
+    </label>
 
-            // Update timeline grid width
-            const timelineGrid = document.getElementById('timelineGrid');
-            timelineGrid.style.minWidth = (totalBars * beatsPerBar * pixelsPerBeat + 200) + 'px';
-        }
+    <label class="field">Decoherence <output id="noise-out">0%</output>
+      <input type="range" id="noise" min="0" max="100" value="0">
+      <small>Real depolarizing noise on the gates. Turn it up and the groove falls apart.</small>
+    </label>
 
-        function downloadMusic() {
-            if (currentFile) {
-                window.location.href = '/api/download/' + currentFile;
-            }
-        }
+    <div class="seed">
+      <label class="field">Seed
+        <input type="number" id="seed" min="0" max="2147483646" value="1197">
+      </label>
+      <button class="pill pill--icon" id="dice" aria-label="New seed and compose" title="New seed and compose"><svg><use href="#i-shuffle"/></svg></button>
+    </div>
 
-        function prepareNotesForPlayback(notesInfo) {
-            if (!notesInfo || !Array.isArray(notesInfo) || notesInfo.length === 0) {
-                return;
-            }
-            
-            const secondsPerQuarter = 60 / tempoBPM;
-            const notes = [];
-            let currentTime = 0;
-            
-            notesInfo.forEach((noteInfo) => {
-                if (!noteInfo || !noteInfo.note) return;
-                
-                if (noteInfo.note !== 'Rest' && noteInfo.note !== 'rest') {
-                    const duration = (noteInfo.duration || 0.5) * secondsPerQuarter;
-                    if (duration > 0) {
-                        notes.push({
-                            note: noteInfo.note,
-                            startTime: currentTime,
-                            duration: duration,
-                            velocity: 0.7
-                        });
-                    }
-                }
-                currentTime += (noteInfo.duration || 0.5) * secondsPerQuarter;
-            });
-            
-            currentNotes = notes;
-            updateTotalTime(currentTime);
-        }
+    <button class="gel gel--wide" id="compose">Compose</button>
+    <p class="status" id="status" role="status"></p>
 
-        function togglePlayback() {
-            if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            
-            if (isPlaying) {
-                stopPlayback();
-            } else {
-                startPlayback();
-            }
-        }
+    <div class="remeasure" role="group" aria-labelledby="remeasure-label">
+      <span id="remeasure-label">Measure one layer again</span>
+      <div>
+        <button class="pill" data-layer="harmony">Chords</button>
+        <button class="pill" data-layer="groove">Groove</button>
+        <button class="pill" data-layer="melody">Melody</button>
+      </div>
+    </div>
+  </aside>
 
-        function stopPlayback() {
-            isPlaying = false;
-            const playBtn = document.getElementById('playBtn');
-            const playIcon = document.getElementById('playIcon');
-            playIcon.textContent = '▶';
-            playBtn.classList.remove('playing');
-            
-            if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId);
-            }
-            
-            currentTimePosition = 0;
-            const playhead = document.getElementById('playhead');
-            playhead.style.left = '0px';
-            updateTimeDisplay(0);
-        }
+  <main class="arrange panel" aria-label="Arrangement">
+    <div class="tracks" id="tracks"></div>
+    <div class="lanes">
+      <canvas id="arrangement" tabindex="0" aria-label="Arrangement. Click a note to see which qubit decided it. Click anywhere else to move the playhead."></canvas>
+    </div>
+    <div class="trace" id="trace" aria-live="polite">Click any note to see which qubit decided it.</div>
+  </main>
 
-        async function startPlayback() {
-            if (currentNotes.length === 0) return;
-            
-            if (audioContext.state === 'suspended') {
-                await audioContext.resume();
-            }
-            
-            isPlaying = true;
-            const playBtn = document.getElementById('playBtn');
-            const playIcon = document.getElementById('playIcon');
-            playIcon.textContent = '⏸';
-            playBtn.classList.add('playing');
-            
-            playbackStartTime = audioContext.currentTime;
-            startTime = Date.now();
-            
-            currentNotes.forEach(noteData => {
-                playNote(noteData, playbackStartTime);
-            });
-            
-            updateProgress();
-        }
+  <section class="lab panel" aria-label="Inside the circuits">
+    <div class="tabs" role="tablist">
+      <button role="tab" class="tab is-on" data-tab="groove" aria-selected="true">Groove state</button>
+      <button role="tab" class="tab" data-tab="circuit" aria-selected="false">Circuit</button>
+      <button role="tab" class="tab" data-tab="walk" aria-selected="false">Chord walk</button>
+      <button role="tab" class="tab" data-tab="record" aria-selected="false">Record</button>
+      <select id="circuit-pick" class="circuit-pick" aria-label="Which circuit" hidden></select>
+    </div>
+    <div class="views">
+      <div class="view is-on" data-view="groove" id="view-groove"></div>
+      <div class="view" data-view="circuit" id="view-circuit"><div class="circuit-scroll" id="circuit-scroll"><div id="circuit-size"></div></div><canvas id="circuit-canvas" aria-label="Circuit diagram"></canvas></div>
+      <div class="view" data-view="walk" id="view-walk"></div>
+      <div class="view" data-view="record" id="view-record"></div>
+    </div>
+  </section>
 
-        function playNote(noteData, startTime) {
-            const frequency = getFrequencyFromNote(noteData.note);
-            if (!frequency) return;
-            
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            
-            oscillator.frequency.value = frequency;
-            oscillator.type = 'sine';
-            
-            const now = audioContext.currentTime;
-            gainNode.gain.setValueAtTime(0, now);
-            gainNode.gain.linearRampToValueAtTime(noteData.velocity * 0.3, now + 0.01);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, now + noteData.duration);
-            
-            oscillator.start(startTime + noteData.startTime);
-            oscillator.stop(startTime + noteData.startTime + noteData.duration);
-        }
+  <section class="scope panel" aria-label="Live audio">
+    <canvas id="spectro" aria-hidden="true"></canvas>
+    <canvas id="wave" aria-hidden="true"></canvas>
+  </section>
 
-        function getFrequencyFromNote(noteName) {
-            const noteMap = {
-                'C': 0, 'C#': 1, 'DB': 1, 'D': 2, 'D#': 3, 'EB': 3,
-                'E': 4, 'F': 5, 'F#': 6, 'GB': 6, 'G': 7, 'G#': 8,
-                'AB': 8, 'A': 9, 'A#': 10, 'BB': 10, 'B': 11
-            };
-            
-            const match = noteName.match(/([A-G])([#bB-]?)(\d+)/i);
-            if (!match) return null;
-            
-            const baseNote = match[1].toUpperCase();
-            const accidental = match[2].toUpperCase();
-            const octave = parseInt(match[3]);
-            
-            let noteKey = baseNote;
-            if (accidental === '#' || accidental === 'B' || accidental === '-') {
-                if (accidental === 'B' || accidental === '-') {
-                    noteKey = baseNote + 'B';
-                } else {
-                    noteKey = baseNote + '#';
-                }
-            }
-            
-            const semitone = noteMap[noteKey];
-            if (semitone === undefined) {
-                const baseSemitone = noteMap[baseNote];
-                if (baseSemitone === undefined) return null;
-                const adjustedSemitone = accidental === '#' ? baseSemitone + 1 : 
-                                       (accidental === 'B' || accidental === '-') ? baseSemitone - 1 : baseSemitone;
-                const finalSemitone = ((adjustedSemitone % 12) + 12) % 12;
-                const A4 = 440;
-                const semitonesFromA4 = (octave - 4) * 12 + finalSemitone - 9;
-                return A4 * Math.pow(2, semitonesFromA4 / 12);
-            }
-            
-            const A4 = 440;
-            const semitonesFromA4 = (octave - 4) * 12 + semitone - 9;
-            return A4 * Math.pow(2, semitonesFromA4 / 12);
-        }
-
-        function updateProgress() {
-            if (!isPlaying) return;
-            
-            const totalDuration = currentNotes.length > 0 
-                ? Math.max(...currentNotes.map(n => n.startTime + n.duration))
-                : 0;
-            
-            if (totalDuration === 0) return;
-            
-            const elapsed = (Date.now() - startTime) / 1000;
-            currentTimePosition = elapsed;
-            
-            // Calculate playhead position based on beats (matching how notes are positioned)
-            updatePlayhead(elapsed);
-            updateTimeDisplay(elapsed);
-            
-            if (elapsed >= totalDuration) {
-                stopPlayback();
-            } else {
-                animationFrameId = requestAnimationFrame(updateProgress);
-            }
-        }
-
-        function updatePlayhead(elapsedSeconds) {
-            // Convert elapsed time to beats, then to pixels
-            // This matches how notes are positioned in visualizeNotes
-            const secondsPerQuarter = 60 / tempoBPM;
-            const beats = elapsedSeconds / secondsPerQuarter;
-            const pixelPosition = beats * pixelsPerBeat;
-            
-            const playhead = document.getElementById('playhead');
-            playhead.style.left = pixelPosition + 'px';
-        }
-
-        function updateTimeDisplay(elapsed) {
-            const totalDuration = currentNotes.length > 0 
-                ? Math.max(...currentNotes.map(n => n.startTime + n.duration))
-                : 0;
-            const timeDisplay = document.getElementById('timeDisplay');
-            timeDisplay.textContent = formatTime(elapsed) + ' / ' + formatTime(totalDuration);
-        }
-
-        function updateTotalTime(seconds) {
-            // This will be called when notes are prepared
-        }
-
-        function formatTime(seconds) {
-            const mins = Math.floor(seconds / 60);
-            const secs = Math.floor(seconds % 60);
-            return `${mins}:${secs.toString().padStart(2, '0')}`;
-        }
-
-        function zoomIn() {
-            pixelsPerBeat = Math.min(pixelsPerBeat * 1.5, 200);
-            if (currentNotesData.length > 0) {
-                visualizeNotes(currentNotesData);
-            }
-        }
-
-        function zoomOut() {
-            pixelsPerBeat = Math.max(pixelsPerBeat / 1.5, 24);
-            if (currentNotesData.length > 0) {
-                visualizeNotes(currentNotesData);
-            }
-        }
-    </script>
+  <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

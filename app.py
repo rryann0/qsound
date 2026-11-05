@@ -1,157 +1,64 @@
-"""
-Web interface for Quantum Music Generator
-"""
+"""QSound's web app. The server only runs circuits; the browser does all the synthesis."""
 
-from flask import Flask, render_template, jsonify, request, send_file
-from flask_cors import CORS
-from quantum_music import QuantumMusicGenerator
-from music21 import note
 import os
-import re
-import tempfile
+
+from flask import Flask, jsonify, render_template, request
+
+from qsound import compose
+from qsound.styles import STYLES
+from qsound.theory import KEYS, MODES
 
 app = Flask(__name__)
-CORS(app)
-
-generator = QuantumMusicGenerator(num_qubits=8)
+BARS = (8, 16, 32)
 
 
-@app.route('/')
+@app.get("/")
 def index():
-    """Serve the main page"""
-    return render_template('index.html')
+    styles = [{"id": k, "name": v["name"], "blurb": v["blurb"], "bpm": v["bpm"], "mode": v["mode"]} for k, v in STYLES.items()]
+    return render_template("index.html", styles=styles, keys=KEYS, modes=list(MODES), bars=BARS)
 
 
-@app.route('/api/generate', methods=['POST'])
-def generate_music():
-    """Generate music based on user parameters"""
+@app.get("/health")
+def health():
+    return "ok"
+
+
+@app.post("/api/compose")
+def api_compose():
+    data = request.get_json(silent=True) or {}
     try:
-        data = request.json
-        num_notes = data.get('num_notes', 16)
-        base_note = data.get('base_note', 'C4')
-        scale_type = data.get('scale_type', 'major')
-        tempo_bpm = data.get('tempo_bpm', 120)
-        composition_type = data.get('type', 'melody')  # 'melody', 'rhythm', 'full'
-        
-        if composition_type == 'melody':
-            music_stream = generator.generate_melody(
-                num_notes=num_notes,
-                base_note=base_note,
-                scale_type=scale_type,
-                tempo_bpm=tempo_bpm
-            )
-        elif composition_type == 'full':
-            num_measures = num_notes // 8
-            music_stream = generator.generate_full_composition(
-                num_measures=num_measures,
-                tempo_bpm=tempo_bpm,
-                key_signature=base_note[0]
-            )
-        else:
-            # For rhythm, we'll generate a simple melody with rhythm applied
-            music_stream = generator.generate_melody(
-                num_notes=num_notes,
-                base_note=base_note,
-                scale_type=scale_type,
-                tempo_bpm=tempo_bpm
-            )
-            rhythm = generator.generate_rhythm(num_notes)
-            # Get all notes from the stream
-            all_elements = list(music_stream.flatten().notesAndRests)
-            # Apply rhythm pattern - create a new list with notes/rests
-            new_elements = []
-            for i, (n, r) in enumerate(zip(all_elements[:num_notes], rhythm[:num_notes])):
-                if r == 0 and isinstance(n, note.Note):
-                    # Replace note with rest
-                    rest = note.Rest()
-                    rest.duration = n.duration
-                    new_elements.append(rest)
-                    music_stream.replace(n, rest)
-                else:
-                    new_elements.append(n)
-        
-        # Save to temporary file
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mid')
-        temp_file.close()
-        music_stream.write('midi', fp=temp_file.name)
-        
-        # Get note information - use flatten() to get all notes from the stream
-        notes_info = []
-        # Get all notes and rests from the stream
-        all_elements = list(music_stream.flatten().notesAndRests)
-        
-        # Debug: print what we found
-        # print(f"Total elements in stream: {len(all_elements)}")
-        # print(f"Requested notes: {num_notes}")
-        # print(f"First few elements: {[type(e).__name__ for e in all_elements[:5]]}")
-        
-        # Limit to the requested number of notes, but ensure we have enough
-        elements_to_process = all_elements[:num_notes] if len(all_elements) >= num_notes else all_elements
-        
-        for n in elements_to_process:
-            # Check if it's a note or rest
-            if isinstance(n, note.Note):
-                notes_info.append({
-                    'note': n.nameWithOctave,
-                    'duration': float(n.duration.quarterLength)
-                })
-            elif isinstance(n, note.Rest):
-                notes_info.append({
-                    'note': 'Rest',
-                    'duration': float(n.duration.quarterLength)
-                })
-            elif hasattr(n, 'nameWithOctave'):
-                # Handle other note-like objects
-                notes_info.append({
-                    'note': n.nameWithOctave,
-                    'duration': float(n.duration.quarterLength)
-                })
-            else:
-                # Fallback for any other element
-                notes_info.append({
-                    'note': 'Rest',
-                    'duration': float(n.duration.quarterLength) if hasattr(n, 'duration') else 0.5
-                })
-        
-        # Ensure we have at least some notes (not all rests)
-        num_actual_notes = sum(1 for n in notes_info if n['note'] != 'Rest' and n['note'] != 'rest')
-        
-        # If we have no playable notes, log a warning but still return the data
-        # (The frontend will handle this gracefully)
-        if num_actual_notes == 0 and len(notes_info) > 0:
-            # This shouldn't happen with the improved rhythm generation, but just in case
-            pass
-        
-        return jsonify({
-            'success': True,
-            'file': os.path.basename(temp_file.name),
-            'notes': notes_info
-        })
-    
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        style = data.get("style", "softclub")
+        key = data.get("key", "A")
+        mode = data.get("mode") or None
+        bars = int(data.get("bars", 16))
+        bpm = data.get("bpm")
+        if style not in STYLES:
+            raise ValueError("Unknown style")
+        if key not in KEYS:
+            raise ValueError("Unknown key")
+        if mode is not None and mode not in MODES:
+            raise ValueError("Unknown mode")
+        if bars not in BARS:
+            raise ValueError("Bars must be 8, 16 or 32")
+        if bpm is not None and not 50 <= int(bpm) <= 200:
+            raise ValueError("Tempo must be between 50 and 200 BPM")
+        seed = int(data.get("seed", 1197))
+        if not 0 <= seed < 2**31:
+            raise ValueError("Seed out of range")
+        seeds = data.get("seeds")
+        if seeds is not None:
+            seeds = {k: int(seeds[k]) for k in ("harmony", "groove", "melody") if k in seeds}
+    except (TypeError, ValueError) as e:
+        return jsonify({"error": str(e)}), 400
+
+    piece = compose(
+        style=style, key=key, mode=mode, bpm=bpm, bars=bars,
+        entanglement=float(data.get("entanglement", 0.8)), noise=float(data.get("noise", 0)),
+        seed=seed, seeds=seeds,
+    )
+    return jsonify(piece)
 
 
-@app.route('/api/download/<path:filename>')
-def download_file(filename):
-    """Download a generated MIDI file. Only serves files this app wrote to the temp folder."""
-    if not re.fullmatch(r'tmp\w+\.mid', filename):
-        return jsonify({'error': 'File not found'}), 404
-    path = os.path.join(tempfile.gettempdir(), filename)
-    if not os.path.isfile(path):
-        return jsonify({'error': 'File not found'}), 404
-    return send_file(path, as_attachment=True, download_name='quantum_music.mid')
-
-
-if __name__ == '__main__':
-    # Create templates directory if it doesn't exist
-    os.makedirs('templates', exist_ok=True)
-    # Get port from environment variable (for production) or use 5000 for local development
-    port = int(os.environ.get('PORT', 5000))
-    # Use debug mode only in development (when PORT is not set)
-    debug_mode = os.environ.get('PORT') is None
-    app.run(debug=debug_mode, host='0.0.0.0', port=port)
-
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=os.environ.get("PORT") is None, host="0.0.0.0", port=port)
