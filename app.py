@@ -7,6 +7,7 @@ from flask_cors import CORS
 from quantum_music import QuantumMusicGenerator
 from music21 import note
 import os
+import re
 import tempfile
 
 app = Flask(__name__)
@@ -123,7 +124,7 @@ def generate_music():
         
         return jsonify({
             'success': True,
-            'file': temp_file.name,
+            'file': os.path.basename(temp_file.name),
             'notes': notes_info
         })
     
@@ -136,11 +137,13 @@ def generate_music():
 
 @app.route('/api/download/<path:filename>')
 def download_file(filename):
-    """Download the generated MIDI file"""
-    try:
-        return send_file(filename, as_attachment=True, download_name='quantum_music.mid')
-    except Exception as e:
-        return jsonify({'error': str(e)}), 404
+    """Download a generated MIDI file. Only serves files this app wrote to the temp folder."""
+    if not re.fullmatch(r'tmp\w+\.mid', filename):
+        return jsonify({'error': 'File not found'}), 404
+    path = os.path.join(tempfile.gettempdir(), filename)
+    if not os.path.isfile(path):
+        return jsonify({'error': 'File not found'}), 404
+    return send_file(path, as_attachment=True, download_name='quantum_music.mid')
 
 
 if __name__ == '__main__':
