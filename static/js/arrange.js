@@ -36,6 +36,7 @@ export class Arrangement {
     this.hovered = null;
     this.loopSection = null;
     this.total = piece.bars * piece.stepsPerBar;
+    this.marks = (piece.fx ?? []).filter((f) => f.kind !== "section");
     this.ranges = {};
     for (const t of PITCHED) {
       const pitches = (piece.tracks[t] ?? []).map((n) => n.m);
@@ -73,6 +74,10 @@ export class Arrangement {
   }
 
   noteBox(track, note) {
+    if (track === "fx") {
+      const start = this.x(note.s);
+      return { x: start, y: TOP - 4, w: Math.max(this.x(note.s + note.d) - start, 2), h: 4 };
+    }
     const x = this.x(note.s);
     const w = Math.max(this.x(note.s + note.d) - x - 1, 1.5);
     const top = this.y(track);
@@ -101,7 +106,7 @@ export class Arrangement {
     piece.sections.forEach((s, i) => {
       const x0 = this.x(s.start * stepsPerBar);
       const x1 = this.x(s.end * stepsPerBar);
-      g.fillStyle = s === this.loopSection || s.name === this.loopSection?.name ? "#14306f" : i % 2 ? "#0b1636" : "#091230";
+      g.fillStyle = s.start === this.loopSection?.start ? "#14306f" : i % 2 ? "#0b1636" : "#091230";
       g.fillRect(x0, TOP, x1 - x0, this.h - TOP);
     });
 
@@ -135,7 +140,7 @@ export class Arrangement {
       const width = g.measureText(s.name).width + 12;
       const x = this.x(s.start * stepsPerBar) + 24;
       if (x + width > this.x(s.end * stepsPerBar)) return;
-      const looping = s.name === this.loopSection?.name;
+      const looping = s.start === this.loopSection?.start;
       g.fillStyle = looping ? "#d9141e" : "#1f3a97";
       g.fillRect(x, 4, width, RULER - 8);
       g.fillStyle = "#fff";
@@ -173,6 +178,15 @@ export class Arrangement {
       }
     }
     g.globalAlpha = 1;
+
+    // glitches hit the whole mix, so they run through every lane
+    for (const f of this.marks) {
+      const b = this.noteBox("fx", f);
+      g.fillStyle = "rgba(217, 20, 30, 0.13)";
+      g.fillRect(b.x, TOP, b.w, this.h - TOP);
+      g.fillStyle = "#ff4d55";
+      g.fillRect(b.x, b.y, b.w, b.h);
+    }
   }
 
   frame(step) {
@@ -194,6 +208,14 @@ export class Arrangement {
           g.fillRect(b.x, b.y, b.w, b.h);
           g.shadowBlur = 0;
         }
+      }
+    }
+
+    for (const f of this.marks) {
+      if (step >= f.s && step < f.s + f.d) {
+        const b = this.noteBox("fx", f);
+        g.fillStyle = "rgba(255, 77, 85, 0.3)";
+        g.fillRect(b.x, TOP, b.w, this.h - TOP);
       }
     }
 
@@ -222,6 +244,10 @@ export class Arrangement {
   }
 
   hit(px, py) {
+    if (py >= TOP - 8 && py < TOP + 2) {
+      const mark = this.marks.find((f) => px >= this.x(f.s) - 1 && px <= this.x(f.s + f.d) + 1);
+      if (mark) return { track: "fx", note: mark };
+    }
     if (py < TOP) return null;
     const track = TRACKS[Math.floor((py - TOP) / this.laneH)];
     if (!track) return null;

@@ -14,7 +14,7 @@
   <h3>Start here</h3>
   <ol>
     <li><strong>Press Play.</strong> A piece is already loaded, so you can hear something right away.</li>
-    <li><strong>Pick a style</strong> on the left. It composes a new piece in that style.</li>
+    <li><strong>Pick a style</strong> on the left. It composes a new piece in that style and starts from the top.</li>
     <li><strong>Drag Entanglement, Interference or Decoherence while it plays.</strong> The music keeps going from the same spot, so you can hear what the qubits changed.</li>
     <li><strong>Click any note</strong> in the arrangement to see which qubit decided it.</li>
   </ol>
@@ -29,13 +29,13 @@
       <ul class="guide__styles">{% for s in styles %}<li><b>{{ s.name }}:</b> {{ s.blurb }}</li>{% endfor %}</ul>
     </dd>
     <dt>Key, Mode and Tempo</dt><dd>Where the music sits. Each style starts with its own, and you can change them.</dd>
-    <dt>Length</dt><dd>8, 16 or 32 bars. Only 32 bars gets a break, a peak and an outro.</dd>
+    <dt>Length</dt><dd>8, 16 or 32 bars. Longer pieces get more sections, and each style arranges them its own way. Hyperpop flips between verses, sweet hooks and crushed breakdowns.</dd>
     <dt>Entanglement</dt><dd>How much the qubits depend on each other. Low: every hit is on its own, melodies wander, and the chord walk marches straight round the ring. High: the bass follows the kick, melodies keep moving the same way, and the chord walk doubles back on itself.</dd>
     <dt>Interference</dt><dd>Lets amplitudes add or cancel, which is the part ordinary randomness can't do. It moves ghost notes around the bar and shapes melodies into rising and falling arcs.</dd>
-    <dt>Decoherence</dt><dd>Adds noise to the gates, like a real noisy quantum computer. Turn it up and the interference washes out, the groove loosens, and the piece falls apart.</dd>
+    <dt>Decoherence</dt><dd>Adds noise to the gates, like a real noisy quantum computer. Turn it up and the interference washes out, the groove loosens, and the piece falls apart. In Hyperpop, it also breaks the beat more often.</dd>
     <dt>Seed</dt><dd>Names one run. The same settings and seeds always make the same piece. The shuffle button picks a new seed.</dd>
     <dt>Arrows beside Compose</dt><dd>Step back and forward through the pieces you've made this session.</dd>
-    <dt>Measure one layer again</dt><dd>Keeps everything else and gets new chords, a new groove or a new melody.</dd>
+    <dt>Measure one layer again</dt><dd>Keeps everything else and gets new chords, a new groove or a new melody. In Hyperpop, Groove also measures new glitches.</dd>
   </dl>
   <p class="guide__show"><button class="pill pill--small" data-show="#ent">Show me the sliders</button> <button class="pill pill--small" data-show=".remeasure">Show me Measure again</button></p>
 </section>
@@ -45,6 +45,7 @@
   <dl>
     <dt>Top bar</dt><dd>Play, stop and loop. The display shows the bar, time, chord and section. The slider next to it is overall volume.</dd>
     <dt>Arrangement</dt><dd>Every note in the piece, one row per part. Click an empty spot to jump there. Click a section label, like Main, to loop just that section.</dd>
+    <dt>Red marks</dt><dd>Hyperpop's glitches, which hit the whole mix: it stutters, chops, gets crushed, drops out or slows to a stop. Click a mark, just under the chords, to see which qubit called it.</dd>
     <dt>Each row's controls</dt><dd>M mutes it, S plays it alone, and the slider sets its level. Your mix stays when you compose again, until you change style.</dd>
     <dt>Bottom right</dt><dd>A live picture of the sound: low notes at the bottom, high notes at the top.</dd>
   </dl>
@@ -84,6 +85,7 @@
   <p><strong>Groove:</strong> 80 qubits, one for each kick, snare, hat, bass and chord stab position in a bar. Each measurement shot gives one bar, so the bars vary but keep the same feel.</p>
   <p><strong>Melody:</strong> 96 qubits. For each 16th note, three qubits decide whether a note starts, which way it moves, and whether it leaps. Each shot is a two-bar motif, arranged so that ideas come back.</p>
   <p><strong>Chords:</strong> a quantum walk around the circle of fifths. Each walk starts on the previous chord and lands on the next one.</p>
+  <p><strong>Hyperpop's extras:</strong> a second 80-qubit groove for the Crash sections, and a 48-qubit glitch circuit. For each 16th note, one qubit decides whether the beat breaks and two decide how. Each shot is a bar of edits. A change of section always breaks the beat, and those qubits help pick how.</p>
   <p>Music theory handles the rest: staying in key, landing strong beats on chord tones, and keeping chords smooth. Nothing else rolls dice. These qubits are simulated on a normal computer with Qiskit Aer, not run on quantum hardware.</p>
 </section>
 

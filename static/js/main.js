@@ -21,6 +21,7 @@ const past = [];
 let pastIndex = -1;
 
 const trackNames = { lead: "Lead", arp: "Arp", chords: "Chords", bass: "Bass", kick: "Kick", snare: "Snare", hat: "Hats" };
+const glitchNames = { stutter: "Stutter", slice: "Fast stutter", chop: "Chop", crush: "Crush", tape: "Tape stop", riser: "Riser", drop: "Dropout" };
 
 // ---- Arrangement and mixer
 
@@ -36,7 +37,7 @@ const arrangement = new Arrangement($("arrangement"), {
 const circuitView = new CircuitView($("circuit-scroll"), $("circuit-size"), $("circuit-canvas"), $("gate-info"));
 
 function toggleSectionLoop(section) {
-  const same = arrangement.loopSection?.name === section.name;
+  const same = arrangement.loopSection?.start === section.start;
   const next = same ? null : section;
   player.setRegion(next ? [section.start * piece.stepsPerBar, section.end * piece.stepsPerBar] : null);
   arrangement.setLoopSection(next);
@@ -95,17 +96,19 @@ function applyMix() {
 
 function setPiece(next, { keepMix = false } = {}) {
   const wasPlaying = player.playing;
-  const place = player.currentStep();
-  const looped = arrangement.loopSection?.name;
+  // a new style is a new song, so it starts from the top with its own mix
+  const sameStyle = piece?.params.style === next.params.style;
+  const place = sameStyle ? player.currentStep() : 0;
+  const looped = sameStyle ? arrangement.loopSection : null;
   piece = next;
-  if (!keepMix || levels.kick === undefined) levels = defaultMix(piece.params.style);
+  if (!keepMix || !sameStyle) levels = defaultMix(piece.params.style);
   mix = { ...levels };
   player.load(piece, mix);
   buildTracks();
   applyMix();
   arrangement.setPiece(piece);
   // a section you're looping stays looped, so you can loop it and move a slider
-  const section = piece.sections.find((s) => s.name === looped);
+  const section = piece.sections.find((s) => s.name === looped?.name && s.start === looped?.start);
   if (section) {
     player.setRegion([section.start * piece.stepsPerBar, section.end * piece.stepsPerBar]);
     arrangement.setLoopSection(section);
@@ -469,7 +472,7 @@ function showTrace(found) {
   const { track, note } = found;
   const bar = Math.floor(note.s / piece.stepsPerBar) + 1;
   const step = Math.floor(note.s % piece.stepsPerBar) + 1;
-  const where = `${trackNames[track]}, bar ${bar} step ${step}.`;
+  const where = `${track === "fx" ? glitchNames[note.kind] : trackNames[track]}, bar ${bar} step ${step}.`;
   const src = note.src;
   box.textContent = "";
   if (!src) {
@@ -488,7 +491,8 @@ function showTrace(found) {
   const stats = circuit.prepared
     ? `The style asks for ${Math.round(circuit.prepared[src.q] * 100)}%. It measured 1 in ${Math.round(circuit.measured[src.q] * 100)}% of ${circuit.shots} shots.`
     : `It measured 1 in ${Math.round(circuit.measured[src.q] * 100)}% of ${circuit.shots} shots.`;
-  box.append(`${where} Qubit ${src.q} (${label}) measured 1 in shot ${src.shot}. ${stats} `);
+  if (note.forced) box.append(`${where} The section changes here, so the beat breaks. Qubit ${src.q} (${label}) helped pick how. `);
+  else box.append(`${where} Qubit ${src.q} (${label}) measured 1 in shot ${src.shot}. ${stats} `);
   const link = document.createElement("button");
   link.textContent = "Show in circuit";
   link.addEventListener("click", () => {

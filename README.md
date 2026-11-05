@@ -8,7 +8,7 @@ The qubits are simulated with Qiskit Aer. Nothing here runs on quantum hardware 
 
 ## How the qubits make the music
 
-There are three kinds of circuit, and no random number generator chooses any of the notes. To read them, open Guide in the app, or see `/guide`.
+There are up to four kinds of circuit, and no random number generator chooses any of the notes. To read them, open Guide in the app, or see `/guide`.
 
 **Groove (80 qubits).** One qubit for every kick, snare, hat, bass and chord-stab position in a bar. Each qubit is rotated so its chance of measuring 1 matches the style. Controlled rotations then entangle them: a kick makes the bass more likely on the same step, and less likely in a style where the bass sits off the beat. A final layer of Rz and Ry gates makes those amplitudes interfere. Each measurement shot is a bar, so the bars vary while keeping the same feel.
 
@@ -16,13 +16,15 @@ There are three kinds of circuit, and no random number generator chooses any of 
 
 **Harmony (4 qubits, one circuit per chord).** A coined quantum walk around the circle of fifths. Each chord is where the walk lands, starting from the chord before it. Each walk takes five steps, enough for its result to differ from a classical random walk (a test in `tests/` checks this). You can see where each one landed in the Chord walk view.
 
+**Glitch (48 qubits, Hyperpop only).** For each 16th note, one qubit decides whether the beat breaks and two decide how. Each shot is a bar of edits: buffer repeats, chops, crushing, tape stops and dropouts applied to the whole mix. Hyperpop also has a second groove circuit for its breakdowns.
+
 Music theory handles what the qubits don't: staying in key, landing strong beats on chord tones, and moving each chord's voices as little as possible.
 
 ## What the controls do
 
 - **Entanglement** scales the entangling gates. Low: each hit is independent and the chord walk marches straight round the ring. High: the bass follows the kick, melodies run and the chord walk doubles back on itself. A test in `tests/` checks that this really changes the measured correlation.
 - **Interference** winds phases between the qubits and then mixes them, so amplitudes add or cancel. This is the control that matters for honesty: rotations and controlled rotations alone give exactly the same results as classical coin flips that depend on each other. With interference at zero the groove can be reproduced that way, and a test proves it. With it on, the results can't.
-- **Decoherence** adds depolarizing noise to the gates. The interference washes out and the prepared state stops surviving, so you can hear a groove fall apart.
+- **Decoherence** adds depolarizing noise to the gates. The interference washes out and the prepared state stops surviving, so you can hear a groove fall apart. In Hyperpop, it also breaks the beat more often.
 - **Seed** makes runs reproducible. The same settings and seeds always give the same piece, and the page address names them exactly.
 - **Measure one layer again** re-runs only the chords, groove or melody and keeps the rest.
 
@@ -30,11 +32,11 @@ Moving any of these re-composes while the music keeps playing from the same spot
 
 ## Styles
 
-Soft Club, 2-Step, Liquid, Trance, Hyperpop, R&B and Drift. Each has its own groove, chord voicings, patches and mix.
+Soft Club, 2-Step, Liquid, Trance, Hyperpop, R&B and Drift. Each has its own groove, chord voicings, patches and mix. Hyperpop and R&B also have their own arrangements. Hyperpop flips between verses, sweet hooks and crushed breakdowns, with a hard-tuned synthesized voice and drums and bass clipped together. R&B comps its chords, pushes them ahead of the bar, and moves its bass around.
 
 ## Sound
 
-All sound is synthesized live with the Web Audio API, with no samples: synthesized drums, FM and subtractive voices, chorus, delay, a generated reverb, sidechain ducking and a master limiter. Each style has its own patches and mix. The same code renders WAV exports offline.
+All sound is synthesized live with the Web Audio API, with no samples: synthesized drums, FM and subtractive voices, formant-filtered vocals, chorus, delay, a generated reverb, sidechain ducking and a master limiter. Each style has its own patches and mix. The same code renders WAV exports offline.
 
 ## Exports
 
