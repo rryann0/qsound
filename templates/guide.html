@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QSound guide</title>
+  <meta name="description" content="How to use QSound: composing with qubits, mixing, tracing a note to its qubit, reading the circuit, and exporting your music.">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+  <link href="https://fonts.googleapis.com/css2?family=Fragment+Mono&family=Host+Grotesk:wght@400..700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body class="guide-page">
+  <main class="guide guide--page">
+    <div class="guide__head">
+      <a href="{{ url_for('index') }}"><img src="{{ url_for('static', filename='img/qsound.png') }}" alt="QSound" height="34"></a>
+      <h1 id="guide-title">Guide</h1>
+      <a class="gel gel--pill" href="{{ url_for('index') }}">Open QSound</a>
+    </div>
+    <div class="guide__body">
+      {% include "_guide.html" %}
+    </div>
+  </main>
+</body>
+</html>

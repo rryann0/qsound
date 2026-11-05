@@ -1,0 +1,120 @@
+<nav class="guide__toc" aria-label="Guide contents">
+  <a href="#g-start">Start here</a>
+  <a href="#g-compose">Composer</a>
+  <a href="#g-listen">Listening and mixing</a>
+  <a href="#g-trace">Tracing a note</a>
+  <a href="#g-circuits">Reading the circuit</a>
+  <a href="#g-qubits">How qubits make music</a>
+  <a href="#g-keep">Saving and sharing</a>
+  <a href="#g-keys">Keyboard</a>
+  <a href="#g-help">If something's wrong</a>
+</nav>
+
+<section id="g-start">
+  <h3>Start here</h3>
+  <ol>
+    <li><strong>Press Play.</strong> A piece is already loaded, so you can hear something right away.</li>
+    <li><strong>Pick a style</strong> on the left. It composes a new piece in that style.</li>
+    <li><strong>Drag Entanglement, Interference or Decoherence while it plays.</strong> The music keeps going from the same spot, so you can hear what the qubits changed.</li>
+    <li><strong>Click any note</strong> in the arrangement to see which qubit decided it.</li>
+  </ol>
+  <p class="guide__show"><button class="pill pill--small" data-show="#play">Show me Play</button> <button class="pill pill--small" data-show=".styles">Show me the styles</button></p>
+</section>
+
+<section id="g-compose">
+  <h3>Composer</h3>
+  <p>Changing anything here runs the circuits again, and the music keeps playing while it does.</p>
+  <dl>
+    <dt>Style</dt><dd>The sounds, the groove and the feel.
+      <ul class="guide__styles">{% for s in styles %}<li><b>{{ s.name }}:</b> {{ s.blurb }}</li>{% endfor %}</ul>
+    </dd>
+    <dt>Key, Mode and Tempo</dt><dd>Where the music sits. Each style starts with its own, and you can change them.</dd>
+    <dt>Length</dt><dd>8, 16 or 32 bars. Only 32 bars gets a break, a peak and an outro.</dd>
+    <dt>Entanglement</dt><dd>How much the qubits depend on each other. Low: every hit is on its own, melodies wander, and the chord walk marches straight round the ring. High: the bass follows the kick, melodies keep moving the same way, and the chord walk doubles back on itself.</dd>
+    <dt>Interference</dt><dd>Lets amplitudes add or cancel, which is the part ordinary randomness can't do. It moves ghost notes around the bar and shapes melodies into rising and falling arcs.</dd>
+    <dt>Decoherence</dt><dd>Adds noise to the gates, like a real noisy quantum computer. Turn it up and the interference washes out, the groove loosens, and the piece falls apart.</dd>
+    <dt>Seed</dt><dd>Names one run. The same settings and seeds always make the same piece. The shuffle button picks a new seed.</dd>
+    <dt>Arrows beside Compose</dt><dd>Step back and forward through the pieces you've made this session.</dd>
+    <dt>Measure one layer again</dt><dd>Keeps everything else and gets new chords, a new groove or a new melody.</dd>
+  </dl>
+  <p class="guide__show"><button class="pill pill--small" data-show="#ent">Show me the sliders</button> <button class="pill pill--small" data-show=".remeasure">Show me Measure again</button></p>
+</section>
+
+<section id="g-listen">
+  <h3>Listening and mixing</h3>
+  <dl>
+    <dt>Top bar</dt><dd>Play, stop and loop. The display shows the bar, time, chord and section. The slider next to it is overall volume.</dd>
+    <dt>Arrangement</dt><dd>Every note in the piece, one row per part. Click an empty spot to jump there. Click a section label, like Main, to loop just that section.</dd>
+    <dt>Each row's controls</dt><dd>M mutes it, S plays it alone, and the slider sets its level. Your mix stays when you compose again, until you change style.</dd>
+    <dt>Bottom right</dt><dd>A live picture of the sound: low notes at the bottom, high notes at the top.</dd>
+  </dl>
+  <p class="guide__show"><button class="pill pill--small" data-show="#tracks">Show me the mixer</button> <button class="pill pill--small" data-show=".scope">Show me the live picture</button></p>
+</section>
+
+<section id="g-trace">
+  <h3>Tracing a note</h3>
+  <p>Click a note and the bar under the arrangement tells you which qubit decided it, in which shot, and how often that qubit measured 1. Press <strong>Show in circuit</strong> to jump to that qubit's gates.</p>
+  <p class="guide__show"><button class="pill pill--small" data-show="#trace">Show me where</button></p>
+</section>
+
+<section id="g-circuits">
+  <h3>Reading the circuit</h3>
+  <p>A circuit is read left to right, and each horizontal line is one qubit. The band across the top names the stages: <strong>Prepare</strong>, <strong>Entangle</strong>, <strong>Interfere</strong> and <strong>Measure</strong>. The groove starts with a long column of Ry gates because every qubit gets prepared first, so scroll right or press <strong>See it all</strong>. Hover over any gate to see what it does there.</p>
+  <table class="guide__gates">
+    <thead><tr><th>Gate</th><th>What it does</th><th>In the music</th></tr></thead>
+    <tbody>
+      <tr><td>Ry</td><td>Rotates a qubit, which sets its chance of measuring 1.</td><td>How likely a kick, hat or note is on this step.</td></tr>
+      <tr><td>Dot and Ry</td><td>A controlled rotation: only rotates if the qubit with the dot is 1. Blue raises the chance; red lowers it. This is what entangles qubits.</td><td>A kick makes the bass more likely. A note makes the next note less likely.</td></tr>
+      <tr><td>Rz</td><td>Adds a phase. That changes nothing you could measure on its own, until the next rotation turns it into interference.</td><td>Moves ghost notes around, and shapes the melody's arcs.</td></tr>
+      <tr><td>M</td><td>Measures: the qubit collapses to 0 or 1.</td><td>Each set of bits becomes a bar or a motif.</td></tr>
+      <tr><td>+1 and −1</td><td>Moves the walker around the ring, depending on the coin qubit.</td><td>Which chord comes next.</td></tr>
+      <tr><td>Z, S, X, P</td><td>Smaller steps in the chord walk: the coin flip, its balanced start, the starting chord, and a phase around the ring.</td><td>They shape which chords are likely.</td></tr>
+    </tbody>
+  </table>
+  <dl>
+    <dt>Groove state</dt><dd>One cell per qubit. Brightness shows how often it measured 1, and the white line shows the chance the style asks for. Click a cell to see that qubit's gates.</dd>
+    <dt>Chord walk</dt><dd>Where each walk's shots landed on the ring of chords. The white bar is the chord it picked.</dd>
+    <dt>Record</dt><dd>Everything needed to make this piece again.</dd>
+  </dl>
+  <p class="guide__show"><button class="pill pill--small" data-show=".lab" data-tab="circuit">Show me the circuit</button></p>
+</section>
+
+<section id="g-qubits">
+  <h3>How qubits make music</h3>
+  <p><strong>Groove:</strong> 80 qubits, one for each kick, snare, hat, bass and chord stab position in a bar. Each measurement shot gives one bar, so the bars vary but keep the same feel.</p>
+  <p><strong>Melody:</strong> 96 qubits. For each 16th note, three qubits decide whether a note starts, which way it moves, and whether it leaps. Each shot is a two-bar motif, arranged so that ideas come back.</p>
+  <p><strong>Chords:</strong> a quantum walk around the circle of fifths. Each walk starts on the previous chord and lands on the next one.</p>
+  <p>Music theory handles the rest: staying in key, landing strong beats on chord tones, and keeping chords smooth. Nothing else rolls dice. These qubits are simulated on a normal computer with Qiskit Aer, not run on quantum hardware.</p>
+</section>
+
+<section id="g-keep">
+  <h3>Saving and sharing</h3>
+  <dl>
+    <dt>Share</dt><dd>Copies a link that opens this exact piece. Your mixer settings aren't in the link.</dd>
+    <dt>WAV</dt><dd>Audio of the mix, as you've set it.</dd>
+    <dt>MIDI</dt><dd>The notes, one track per part, to open in any music software.</dd>
+    <dt>Circuits</dt><dd>Every circuit as OpenQASM, to run or check elsewhere.</dd>
+    <dt>Record</dt><dd>The whole piece as JSON, with its seeds, shots and version.</dd>
+  </dl>
+</section>
+
+<section id="g-keys">
+  <h3>Keyboard</h3>
+  <table class="guide__keys">
+    <tbody>
+      <tr><td><kbd>Space</kbd></td><td>Play or pause</td><td><kbd>C</kbd></td><td>Compose</td></tr>
+      <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Back or forward one bar</td><td><kbd>B</kbd> <kbd>N</kbd></td><td>Previous or next piece</td></tr>
+      <tr><td><kbd>L</kbd></td><td>Loop on or off</td><td><kbd>G</kbd> or <kbd>?</kbd></td><td>Open this guide</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="g-help">
+  <h3>If something's wrong</h3>
+  <dl>
+    <dt>Compose takes a long time the first time</dt><dd>The free server goes to sleep when nobody's using it, and can take a minute to wake. After that it's quick. The loaded piece plays in the meantime.</dd>
+    <dt>No sound</dt><dd>Press Play first, because browsers won't start audio on their own. Then check the Volume slider, your device's volume, and whether a part is muted or another is soloed.</dd>
+    <dt>The sound crackles</dt><dd>Your computer may be busy. Close other tabs and press Play again.</dd>
+  </dl>
+  <p><a href="https://github.com/rryann0/qsound">The code is on GitHub</a>, under the MIT License.</p>
+</section>

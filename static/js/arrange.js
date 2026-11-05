@@ -1,4 +1,5 @@
 // The arrangement: every track drawn from the real note data, with a playhead.
+// The circuit view: the real gates of each circuit, drawn from what the server ran.
 
 import { TRACKS } from "./engine.js";
 
@@ -8,22 +9,32 @@ const COLORS = { lead: "#ffffff", arp: "#7cc4ee", chords: "#6f8fff", bass: "#a9c
 const PITCHED = new Set(["lead", "arp", "chords", "bass"]);
 
 export class Arrangement {
-  constructor(canvas, { onSeek, onSelect }) {
+  constructor(canvas, { onSeek, onSelect, onSection }) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.staticLayer = document.createElement("canvas");
     this.piece = null;
     this.selected = null;
+    this.hovered = null;
+    this.loopSection = null;
     this.onSeek = onSeek;
     this.onSelect = onSelect;
+    this.onSection = onSection;
+    this.chips = [];
     new ResizeObserver(() => this.resize()).observe(canvas.parentElement);
     canvas.addEventListener("pointerdown", (e) => this.pointer(e));
+    canvas.addEventListener("pointermove", (e) => this.hover(e));
+    canvas.addEventListener("pointerleave", () => {
+      this.hovered = null;
+    });
     canvas.addEventListener("keydown", (e) => this.key(e));
   }
 
   setPiece(piece) {
     this.piece = piece;
     this.selected = null;
+    this.hovered = null;
+    this.loopSection = null;
     this.total = piece.bars * piece.stepsPerBar;
     this.ranges = {};
     for (const t of PITCHED) {
@@ -33,6 +44,12 @@ export class Arrangement {
       this.ranges[t] = [lo - 1, Math.max(hi + 1, lo + 6)];
     }
     this.resize();
+  }
+
+  setLoopSection(section) {
+    this.loopSection = section;
+    this.drawStatic();
+    this.frame(this.lastStep ?? 0);
   }
 
   resize() {
@@ -84,7 +101,7 @@ export class Arrangement {
     piece.sections.forEach((s, i) => {
       const x0 = this.x(s.start * stepsPerBar);
       const x1 = this.x(s.end * stepsPerBar);
-      g.fillStyle = i % 2 ? "#0b1636" : "#091230";
+      g.fillStyle = s === this.loopSection || s.name === this.loopSection?.name ? "#14306f" : i % 2 ? "#0b1636" : "#091230";
       g.fillRect(x0, TOP, x1 - x0, this.h - TOP);
     });
 
@@ -111,18 +128,26 @@ export class Arrangement {
       g.fillStyle = "#b9cdf0";
       g.fillText(String(bar + 1), this.x(bar * stepsPerBar) + 4, RULER / 2 + 1);
     }
+
+    // section chips: click one to loop that section
+    this.chips = [];
     piece.sections.forEach((s) => {
-      g.fillStyle = "#7cc4ee";
-      const label = s.name;
-      const x = this.x(s.end * stepsPerBar) - g.measureText(label).width - 6;
-      if (x > this.x(s.start * stepsPerBar) + 28) g.fillText(label, x, RULER / 2 + 1);
+      const width = g.measureText(s.name).width + 12;
+      const x = this.x(s.start * stepsPerBar) + 24;
+      if (x + width > this.x(s.end * stepsPerBar)) return;
+      const looping = s.name === this.loopSection?.name;
+      g.fillStyle = looping ? "#d9141e" : "#1f3a97";
+      g.fillRect(x, 4, width, RULER - 8);
+      g.fillStyle = "#fff";
+      g.fillText(s.name, x + 6, RULER / 2 + 1);
+      this.chips.push({ section: s, x, w: width });
     });
 
     // chords
     g.fillStyle = "#0a1433";
     g.fillRect(0, RULER, this.w, TOP - RULER);
     g.font = "12px 'Host Grotesk', sans-serif";
-    piece.chords.forEach((c, i) => {
+    piece.chords.forEach((c) => {
       const x = this.x(c.bar * stepsPerBar);
       const w = this.x(stepsPerBar);
       g.fillStyle = c.slot % 2 ? "#17296a" : "#1f3a97";
@@ -160,7 +185,7 @@ export class Arrangement {
     // what's sounding right now, lit up
     for (const t of TRACKS) {
       for (const n of this.piece.tracks[t] ?? []) {
-        if (n.s > step) break;
+        if (n.s > step) continue;
         if (step < n.s + n.d) {
           const b = this.noteBox(t, n);
           g.fillStyle = "#fff";
@@ -172,6 +197,12 @@ export class Arrangement {
       }
     }
 
+    if (this.hovered) {
+      const b = this.noteBox(this.hovered.track, this.hovered.note);
+      g.strokeStyle = "#ffffff";
+      g.lineWidth = 1;
+      g.strokeRect(b.x - 1.5, b.y - 1.5, b.w + 3, b.h + 3);
+    }
     if (this.selected) {
       const b = this.noteBox(this.selected.track, this.selected.note);
       g.strokeStyle = "#ff4d55";
@@ -205,11 +236,32 @@ export class Arrangement {
     return best ? { track, note: best } : null;
   }
 
+  chipAt(px, py) {
+    if (py > RULER) return null;
+    return this.chips.find((c) => px >= c.x && px <= c.x + c.w) ?? null;
+  }
+
+  place(e) {
+    const r = this.canvas.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
+  }
+
+  hover(e) {
+    if (!this.piece) return;
+    const [px, py] = this.place(e);
+    const chip = this.chipAt(px, py);
+    this.hovered = chip ? null : this.hit(px, py);
+    this.canvas.style.cursor = chip || this.hovered ? "pointer" : "crosshair";
+  }
+
   pointer(e) {
     if (!this.piece) return;
-    const r = this.canvas.getBoundingClientRect();
-    const px = e.clientX - r.left;
-    const py = e.clientY - r.top;
+    const [px, py] = this.place(e);
+    const chip = this.chipAt(px, py);
+    if (chip) {
+      this.onSection(chip.section);
+      return;
+    }
     const found = this.hit(px, py);
     if (found) {
       this.selected = found;
@@ -229,28 +281,59 @@ export class Arrangement {
     else if (e.key === "ArrowLeft") this.onSeek(Math.max(0, (this.lastStep ?? 0) - bar));
     else return;
     e.preventDefault();
+    e.stopPropagation();
   }
 }
 
+// ---- Circuit view
+
+const GATE_COLOR = { ry: "#1f4ae0", cry: "#1f4ae0", rz: "#0d8fb3", p: "#0d8fb3", z: "#5a6b94", s: "#5a6b94", x: "#5a6b94", inc: "#1f4ae0", dec: "#3858b8", measure: "#eaf1fa" };
+const HEAD = 20;
+const IDLE = "Read left to right, one line per qubit. Hover over a gate to see what it does.";
+
+const turns = (radians) => {
+  const v = Math.round((radians / Math.PI) * 100) / 100;
+  return `${v}π`;
+};
+
 export class CircuitView {
-  constructor(scroller, sizer, canvas) {
+  constructor(scroller, sizer, canvas, info) {
     this.scroller = scroller;
     this.sizer = sizer;
     this.canvas = canvas;
+    this.info = info;
     this.ctx = canvas.getContext("2d");
     this.circuit = null;
     this.highlight = null;
+    this.fit = false;
     scroller.addEventListener("scroll", () => this.draw());
-    new ResizeObserver(() => this.draw()).observe(scroller);
+    scroller.addEventListener("pointermove", (e) => this.hover(e));
+    scroller.addEventListener("pointerleave", () => this.say(null));
+    new ResizeObserver(() => this.layout()).observe(scroller);
+  }
+
+  setFit(fit) {
+    this.fit = fit;
+    this.layout();
   }
 
   set(circuit, highlight = null) {
     this.circuit = circuit;
     this.highlight = highlight;
     const n = circuit.qubits;
-    const last = new Array(n).fill(0);
+    let last = new Array(n).fill(0);
     this.placed = [];
+    this.layers = [];
+    let current = null;
     for (const g of circuit.gates) {
+      if (g.l !== current?.name) {
+        // each layer starts in its own column, so the structure is easy to see
+        const start = Math.max(...last, current ? current.from + 2 : 0);
+        last = new Array(n).fill(start);
+        if (current) current.to = start;
+        current = { name: g.l, from: start, to: start };
+        this.layers.push(current);
+      }
       const lo = Math.min(...g.q);
       const hi = Math.max(...g.q);
       let col = 0;
@@ -258,22 +341,47 @@ export class CircuitView {
       this.placed.push({ ...g, col, lo, hi });
       for (let q = lo; q <= hi; q++) last[q] = col + 1;
     }
-    this.cols = Math.max(...last, 1);
-    this.ROW = 22;
-    this.COL = 34;
-    this.LEFT = 74;
-    this.sizer.style.width = `${this.LEFT + (this.cols + 2) * this.COL}px`;
-    this.sizer.style.height = `${n * this.ROW + 16}px`;
-    if (highlight != null) {
+    this.cols = Math.max(...last, current ? current.from + 2 : 1);
+    if (current) current.to = this.cols;
+    this.layout();
+    if (highlight != null && !this.fit) {
       this.scroller.scrollTop = Math.max(0, highlight * this.ROW - this.scroller.clientHeight / 2);
       // jump to where this qubit gets entangled, not its first rotation
-      const entangled = this.placed.find((p) => p.q.length > 1 && p.q.includes(highlight));
+      const entangled = this.placed.find((p) => p.q.length > 1 && p.g !== "measure" && p.q.includes(highlight));
       this.scroller.scrollLeft = entangled ? Math.max(0, entangled.col * this.COL - this.scroller.clientWidth / 3) : 0;
     } else {
       this.scroller.scrollTop = 0;
       this.scroller.scrollLeft = 0;
     }
     this.draw();
+  }
+
+  layout() {
+    if (!this.circuit) return;
+    const w = this.scroller.clientWidth;
+    const h = this.scroller.clientHeight;
+    const n = this.circuit.qubits;
+    this.LEFT = this.fit ? 8 : 74;
+    if (this.fit) {
+      this.ROW = Math.max(1, (h - HEAD - 6) / n);
+      this.COL = Math.max(0.5, (w - this.LEFT - 8) / this.cols);
+      this.sizer.style.width = "0";
+      this.sizer.style.height = "0";
+    } else {
+      this.ROW = 22;
+      this.COL = 34;
+      this.sizer.style.width = `${this.LEFT + (this.cols + 2) * this.COL}px`;
+      this.sizer.style.height = `${HEAD + n * this.ROW + 16}px`;
+    }
+    this.draw();
+  }
+
+  xOf(col) {
+    return this.LEFT + (this.fit ? 0 : 16) + col * this.COL - this.scroller.scrollLeft;
+  }
+
+  yOf(q) {
+    return HEAD + (this.fit ? this.ROW / 2 + 2 : 14) + q * this.ROW - this.scroller.scrollTop;
   }
 
   draw() {
@@ -289,20 +397,19 @@ export class CircuitView {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
     if (!this.circuit) return;
-    const sx = scroller.scrollLeft;
-    const sy = scroller.scrollTop;
-    const { ROW, COL, LEFT } = this;
-    const yOf = (q) => 14 + q * ROW - sy;
-    const xOf = (c) => LEFT + 16 + c * COL - sx;
+    const { ROW, COL, LEFT, fit } = this;
     const n = this.circuit.qubits;
+    const sy = scroller.scrollTop;
     const first = Math.max(0, Math.floor((sy - 20) / ROW));
     const lastQ = Math.min(n - 1, Math.ceil((sy + h) / ROW));
 
     // wires
-    for (let q = first; q <= lastQ; q++) {
-      const y = yOf(q);
-      g.fillStyle = q === this.highlight ? "#ff4d55" : "#2a3f7d";
-      g.fillRect(LEFT, y - (q === this.highlight ? 1 : 0.5), w, q === this.highlight ? 2 : 1);
+    if (!fit) {
+      for (let q = first; q <= lastQ; q++) {
+        const y = this.yOf(q);
+        g.fillStyle = q === this.highlight ? "#ff4d55" : "#2a3f7d";
+        g.fillRect(LEFT, y - (q === this.highlight ? 1 : 0.5), w, q === this.highlight ? 2 : 1);
+      }
     }
 
     // gates
@@ -310,45 +417,108 @@ export class CircuitView {
     g.textBaseline = "middle";
     g.font = "11px 'Fragment Mono', monospace";
     for (const p of this.placed) {
-      const x = xOf(p.col);
+      const x = this.xOf(p.col);
       if (x < LEFT - COL || x > w + COL || p.hi < first || p.lo > lastQ) continue;
-      const box = (cx, cy, label, fill = "#1f4ae0", bw = 28, bh = 16) => {
+      const color = p.g === "cry" && p.p < 0 ? "#c22e36" : GATE_COLOR[p.g] ?? "#5a6b94";
+      if (fit) {
+        g.fillStyle = color;
+        const bw = Math.max(1, COL * 0.9);
+        const y0 = this.yOf(p.lo);
+        g.fillRect(x, y0 - Math.max(0.5, ROW * 0.4), bw, this.yOf(p.hi) - y0 + Math.max(1, ROW * 0.8));
+        continue;
+      }
+      const box = (cx, cy, label, fill = color, ink = "#fff") => {
         g.fillStyle = fill;
-        g.fillRect(cx - bw / 2, cy - bh / 2, bw, bh);
-        g.fillStyle = "#fff";
+        g.fillRect(cx - 14, cy - 8, 28, 16);
+        g.fillStyle = ink;
         g.fillText(label, cx, cy + 0.5);
       };
       if (p.g === "cry") {
         const [c, t] = p.q;
         g.fillStyle = "#eaf1fa";
-        g.fillRect(x - 0.5, yOf(Math.min(c, t)), 1, Math.abs(yOf(t) - yOf(c)));
+        g.fillRect(x - 0.5, this.yOf(Math.min(c, t)), 1, Math.abs(this.yOf(t) - this.yOf(c)));
         g.beginPath();
-        g.arc(x, yOf(c), 3.5, 0, Math.PI * 2);
+        g.arc(x, this.yOf(c), 3.5, 0, Math.PI * 2);
         g.fill();
-        box(x, yOf(t), "Ry", p.p < 0 ? "#b0272f" : "#1f4ae0");
+        box(x, this.yOf(t), "Ry");
       } else if (p.g === "inc" || p.g === "dec") {
-        const top = yOf(p.lo) - 8;
-        const bottom = yOf(p.hi) + 8;
-        g.fillStyle = p.g === "inc" ? "#1f4ae0" : "#3858b8";
+        const top = this.yOf(p.lo) - 8;
+        const bottom = this.yOf(p.hi) + 8;
+        g.fillStyle = color;
         g.fillRect(x - 14, top, 28, bottom - top);
         g.fillStyle = "#fff";
         g.fillText(p.g === "inc" ? "+1" : "−1", x, (top + bottom) / 2);
       } else if (p.g === "measure") {
-        for (const q of p.q) box(x, yOf(q), "M", "#eaf1fa");
-        g.fillStyle = "#0b1634";
-        for (const q of p.q) g.fillText("M", x, yOf(q) + 0.5);
+        for (const q of p.q) box(x, this.yOf(q), "M", "#eaf1fa", "#0b1634");
       } else {
-        box(x, yOf(p.q[0]), p.g === "ry" ? "Ry" : p.g.toUpperCase());
+        box(x, this.yOf(p.q[0]), p.g === "ry" ? "Ry" : p.g === "rz" ? "Rz" : p.g.toUpperCase());
       }
     }
 
-    // labels stay put while the gates scroll
+    // layer names ride along the top
     g.fillStyle = "#0a1433";
-    g.fillRect(0, 0, LEFT, h);
+    g.fillRect(0, 0, w, HEAD);
     g.textAlign = "left";
-    for (let q = first; q <= lastQ; q++) {
-      g.fillStyle = q === this.highlight ? "#ff8a90" : "#b9cdf0";
-      g.fillText((this.circuit.labels[q] ?? `q${q}`).slice(0, 10), 8, yOf(q));
+    this.layers.forEach((l, i) => {
+      const x0 = this.xOf(l.from);
+      const x1 = this.xOf(l.to);
+      g.fillStyle = i % 2 ? "#1f3a97" : "#17296a";
+      g.fillRect(x0 - (fit ? 0 : 14), 2, Math.max(1, x1 - x0), HEAD - 4);
+      g.fillStyle = "#fff";
+      const label = l.name;
+      if (x1 - x0 > g.measureText(label).width + 8) {
+        const textX = Math.max(LEFT + 4, x0 - (fit ? 0 : 10));
+        if (textX + g.measureText(label).width < x1 - 14) g.fillText(label, textX, HEAD / 2 + 1);
+      }
+    });
+
+    // labels stay put while the gates scroll
+    if (!fit) {
+      g.fillStyle = "#0a1433";
+      g.fillRect(0, 0, LEFT, h);
+      for (let q = first; q <= lastQ; q++) {
+        const y = this.yOf(q);
+        if (y < HEAD) continue;
+        g.fillStyle = q === this.highlight ? "#ff8a90" : "#b9cdf0";
+        g.fillText((this.circuit.labels[q] ?? `q${q}`).slice(0, 10), 8, y);
+      }
     }
+  }
+
+  hover(e) {
+    if (!this.circuit) return;
+    const r = this.scroller.getBoundingClientRect();
+    const px = e.clientX - r.left;
+    const py = e.clientY - r.top;
+    const near = this.placed.filter((p) => {
+      const x = this.xOf(p.col);
+      return this.fit ? px >= x - 1 && px <= x + Math.max(this.COL, 2) : Math.abs(px - x) <= this.COL / 2;
+    });
+    const row = (py - HEAD - (this.fit ? this.ROW / 2 + 2 : 14) + this.scroller.scrollTop) / this.ROW;
+    const gate = near.find((p) => row >= p.lo - 0.5 && row <= p.hi + 0.5);
+    this.say(gate);
+  }
+
+  say(p) {
+    if (!this.info) return;
+    if (!p) {
+      this.info.textContent = IDLE;
+      return;
+    }
+    const L = this.circuit.labels;
+    const name = (q) => L[q] ?? `qubit ${q}`;
+    const text = {
+      ry: () => `Ry on ${name(p.q[0])}: rotates it by ${turns(p.p)}, which sets its chance of measuring 1.`,
+      cry: () => `Controlled Ry: only if ${name(p.q[0])} is 1, rotate ${name(p.q[1])} by ${turns(p.p)}. ${p.p < 0 ? "Red: it lowers the chance." : "Blue: it raises the chance."} This is what entangles them.`,
+      rz: () => `Rz on ${name(p.q[0])}: adds a phase of ${turns(p.p)}. On its own this changes nothing you could measure. The next rotation turns it into interference.`,
+      p: () => `Phase on ${name(p.q[0])}: ${turns(p.p)}. A phase that grows around the ring pushes the walker one way.`,
+      z: () => "Z on the coin: part of the coin flip. Together with the Ry after it, this is a Hadamard at full strength.",
+      s: () => "S on the coin: gives the coin its balanced start, so the walk spreads both ways.",
+      x: () => `X on ${name(p.q[0])}: sets the walker's starting chord.`,
+      inc: () => "Moves the walker one chord forward round the ring, if the coin is 1.",
+      dec: () => "Moves the walker one chord back round the ring, if the coin is 0.",
+      measure: () => "Measure: each qubit collapses to 0 or 1. These bits are what the music is made from.",
+    }[p.g];
+    this.info.textContent = text ? text() : p.g;
   }
 }

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>QSound: music composed by qubits</title>
   <meta name="description" content="Compose music from measured quantum circuits. Every drum hit, chord and melody note comes from a qubit, and you can click any note to see which one.">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fragment+Mono&family=Host+Grotesk:wght@400..700&display=swap" rel="stylesheet">
@@ -18,6 +19,8 @@
       <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
       <symbol id="i-loop" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 11v-1a4 4 0 0 1 4-4h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m7 22-4-4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 13v1a4 4 0 0 1-4 4H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
       <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="m18 14 4 4-4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m18 2 4 4-4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 6h1.972a4 4 0 0 1 3.6 2.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     </defs>
   </svg>
 
@@ -27,36 +30,49 @@
     <div class="transport" role="group" aria-label="Transport">
       <button class="gel gel--round" id="play" aria-label="Play" title="Play or pause (Space)"><svg><use href="#i-play"/></svg></button>
       <button class="gel gel--small" id="stop" aria-label="Stop and go back to the start" title="Stop"><svg><use href="#i-stop"/></svg></button>
-      <button class="gel gel--small is-on" id="loop" aria-pressed="true" aria-label="Loop" title="Loop"><svg><use href="#i-loop"/></svg></button>
+      <button class="gel gel--small is-on" id="loop" aria-pressed="true" aria-label="Loop" title="Loop (L)"><svg><use href="#i-loop"/></svg></button>
     </div>
 
     <div class="lcd" aria-label="Now playing">
-      <div class="lcd__cell lcd__cell--wide"><span>Position</span><b id="lcd-pos">001.1.1</b></div>
+      <div class="lcd__cell"><span>Position</span><b id="lcd-pos">001.1.1</b></div>
       <div class="lcd__cell"><span>Time</span><b id="lcd-time">0:00 / 0:00</b></div>
       <div class="lcd__cell"><span>Chord</span><b id="lcd-chord">–</b></div>
       <div class="lcd__cell"><span>Section</span><b id="lcd-section">–</b></div>
       <div class="lcd__cell"><span>Tempo</span><b id="lcd-bpm">–</b></div>
-      <canvas class="lcd__meter" id="meter" width="120" height="44" aria-hidden="true"></canvas>
+      <canvas class="lcd__meter" id="meter" width="110" height="44" aria-hidden="true"></canvas>
     </div>
 
-    <div class="exports" role="group" aria-label="Export">
-      <button class="pill" id="x-wav">WAV</button>
-      <button class="pill" id="x-midi">MIDI</button>
-      <button class="pill" id="x-qasm">Circuits</button>
-      <button class="pill" id="x-json">Record</button>
+    <label class="volume">Volume
+      <input type="range" id="volume" min="0" max="120" value="100">
+    </label>
+
+    <div class="exports">
+      <details class="menu" id="export-menu">
+        <summary class="pill">Export</summary>
+        <div class="menu__list">
+          <button id="x-wav"><b>WAV</b><span>The mix as audio</span></button>
+          <button id="x-midi"><b>MIDI</b><span>The notes, one track per part</span></button>
+          <button id="x-qasm"><b>Circuits</b><span>Every circuit as OpenQASM</span></button>
+          <button id="x-json"><b>Record</b><span>The piece and how it was made</span></button>
+        </div>
+      </details>
+      <button class="pill" id="share" title="Copy a link to this exact piece">Share</button>
+      <button class="gel gel--pill" id="open-guide" title="How to use QSound (G)">Guide</button>
     </div>
   </header>
 
   <aside class="composer panel" aria-label="Composer">
     <fieldset class="styles">
       <legend>Style</legend>
-      {% for s in styles %}
-      <label class="style">
-        <input type="radio" name="style" value="{{ s.id }}" data-bpm="{{ s.bpm }}" data-mode="{{ s.mode }}" {% if loop.first %}checked{% endif %}>
-        <span class="style__name">{{ s.name }}</span>
-        <span class="style__blurb">{{ s.blurb }}</span>
-      </label>
-      {% endfor %}
+      <div class="styles__grid">
+        {% for s in styles %}
+        <label class="style">
+          <input type="radio" name="style" value="{{ s.id }}" data-bpm="{{ s.bpm }}" data-mode="{{ s.mode }}" data-blurb="{{ s.blurb }}" {% if loop.first %}checked{% endif %}>
+          <span>{{ s.name }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <p class="styles__blurb" id="style-blurb">{{ styles[0].blurb }}</p>
     </fieldset>
 
     <div class="row2">
@@ -81,12 +97,17 @@
 
     <label class="field">Entanglement <output id="ent-out">80%</output>
       <input type="range" id="ent" min="0" max="100" value="80">
-      <small>Low: each hit is on its own, chords stay predictable. High: bass locks to kick, melodies run, chords roam.</small>
+      <small>How much qubits depend on each other</small>
+    </label>
+
+    <label class="field">Interference <output id="phase-out">50%</output>
+      <input type="range" id="phase" min="0" max="100" value="50">
+      <small>Amplitudes add or cancel</small>
     </label>
 
     <label class="field">Decoherence <output id="noise-out">0%</output>
       <input type="range" id="noise" min="0" max="100" value="0">
-      <small>Real depolarizing noise on the gates. Turn it up and the groove falls apart.</small>
+      <small>Gate noise: the groove falls apart</small>
     </label>
 
     <div class="seed">
@@ -96,7 +117,11 @@
       <button class="pill pill--icon" id="dice" aria-label="New seed and compose" title="New seed and compose"><svg><use href="#i-shuffle"/></svg></button>
     </div>
 
-    <button class="gel gel--wide" id="compose">Compose</button>
+    <div class="compose-row">
+      <button class="pill pill--icon" id="back" aria-label="Previous piece" title="Previous piece (B)" disabled><svg><use href="#i-left"/></svg></button>
+      <button class="gel gel--wide" id="compose" title="Run the circuits (C)">Compose</button>
+      <button class="pill pill--icon" id="forward" aria-label="Next piece" title="Next piece (N)" disabled><svg><use href="#i-right"/></svg></button>
+    </div>
     <p class="status" id="status" role="status"></p>
 
     <div class="remeasure" role="group" aria-labelledby="remeasure-label">
@@ -112,22 +137,33 @@
   <main class="arrange panel" aria-label="Arrangement">
     <div class="tracks" id="tracks"></div>
     <div class="lanes">
-      <canvas id="arrangement" tabindex="0" aria-label="Arrangement. Click a note to see which qubit decided it. Click anywhere else to move the playhead."></canvas>
+      <canvas id="arrangement" tabindex="0" aria-label="Arrangement. Click a note to see which qubit decided it. Click a section label to loop it. Click anywhere else to move the playhead."></canvas>
     </div>
     <div class="trace" id="trace" aria-live="polite">Click any note to see which qubit decided it.</div>
   </main>
 
   <section class="lab panel" aria-label="Inside the circuits">
-    <div class="tabs" role="tablist">
-      <button role="tab" class="tab is-on" data-tab="groove" aria-selected="true">Groove state</button>
-      <button role="tab" class="tab" data-tab="circuit" aria-selected="false">Circuit</button>
-      <button role="tab" class="tab" data-tab="walk" aria-selected="false">Chord walk</button>
-      <button role="tab" class="tab" data-tab="record" aria-selected="false">Record</button>
-      <select id="circuit-pick" class="circuit-pick" aria-label="Which circuit" hidden></select>
+    <div class="tabs">
+      <div class="tabs__list" role="tablist" aria-label="Inside the circuits">
+        <button role="tab" class="tab is-on" data-tab="groove" aria-selected="true">Groove state</button>
+        <button role="tab" class="tab" data-tab="circuit" aria-selected="false">Circuit</button>
+        <button role="tab" class="tab" data-tab="walk" aria-selected="false">Chord walk</button>
+        <button role="tab" class="tab" data-tab="record" aria-selected="false">Record</button>
+      </div>
+      <div class="circuit-tools" id="circuit-tools" hidden>
+        <button class="pill pill--small" id="circuit-fit" aria-pressed="false">See it all</button>
+        <select id="circuit-pick" class="circuit-pick" aria-label="Which circuit"></select>
+      </div>
     </div>
     <div class="views">
       <div class="view is-on" data-view="groove" id="view-groove"></div>
-      <div class="view" data-view="circuit" id="view-circuit"><div class="circuit-scroll" id="circuit-scroll"><div id="circuit-size"></div></div><canvas id="circuit-canvas" aria-label="Circuit diagram"></canvas></div>
+      <div class="view" data-view="circuit" id="view-circuit">
+        <div class="circuit-stage">
+          <div class="circuit-scroll" id="circuit-scroll"><div id="circuit-size"></div></div>
+          <canvas id="circuit-canvas" aria-label="Circuit diagram"></canvas>
+        </div>
+        <p class="gate-info" id="gate-info" aria-live="polite">Read left to right, one line per qubit. Hover over a gate to see what it does.</p>
+      </div>
       <div class="view" data-view="walk" id="view-walk"></div>
       <div class="view" data-view="record" id="view-record"></div>
     </div>
@@ -137,6 +173,17 @@
     <canvas id="spectro" aria-hidden="true"></canvas>
     <canvas id="wave" aria-hidden="true"></canvas>
   </section>
+
+  <dialog class="guide" id="guide" aria-labelledby="guide-title">
+    <div class="guide__head">
+      <h2 id="guide-title">Guide</h2>
+      <a class="pill pill--link" href="{{ url_for('guide') }}" target="_blank" rel="noopener">Open as a page</a>
+      <button class="gel gel--pill" id="close-guide" autofocus>Close</button>
+    </div>
+    <div class="guide__body">
+      {% include "_guide.html" %}
+    </div>
+  </dialog>
 
   <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>

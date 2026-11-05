@@ -8,22 +8,29 @@ The qubits are simulated with Qiskit Aer. Nothing here runs on quantum hardware 
 
 ## How the qubits make the music
 
-There are three kinds of circuit, and no random number generator chooses any of the notes.
+There are three kinds of circuit, and no random number generator chooses any of the notes. To read them, open Guide in the app, or see `/guide`.
 
-**Groove (80 qubits).** One qubit for every kick, snare, hat, bass and chord-stab position in a bar. Each qubit is rotated so its chance of measuring 1 matches the style. Controlled rotations then entangle them: a kick makes the bass more likely on the same step, and less likely in a style where the bass sits off the beat. Each measurement shot is a bar, so the bars vary while keeping the same feel.
+**Groove (80 qubits).** One qubit for every kick, snare, hat, bass and chord-stab position in a bar. Each qubit is rotated so its chance of measuring 1 matches the style. Controlled rotations then entangle them: a kick makes the bass more likely on the same step, and less likely in a style where the bass sits off the beat. A final layer of Rz and Ry gates makes those amplitudes interfere. Each measurement shot is a bar, so the bars vary while keeping the same feel.
 
-**Melody (96 qubits).** Three chains of qubits, one step per 16th note: does a note start here, which way does it move, and does it leap. Entangling the direction qubits makes runs. Each shot is a two-bar motif, arranged A B A C so the ear has something to return to.
+**Melody (96 qubits).** Three chains of qubits, one step per 16th note: does a note start here, which way does it move, and does it leap. Entangling the direction qubits makes runs, and interference bends them into arcs. Each shot is a two-bar motif, arranged A B A C so the ear has something to return to.
 
-**Harmony (4 qubits, one circuit per chord).** A coined quantum walk around the circle of fifths. Each chord is where the walk lands, starting from the chord before it. Interference shapes which chords are likely, which you can see in the Chord walk view.
+**Harmony (4 qubits, one circuit per chord).** A coined quantum walk around the circle of fifths. Each chord is where the walk lands, starting from the chord before it. Each walk takes five steps, enough for its result to differ from a classical random walk (a test in `tests/` checks this). You can see where each one landed in the Chord walk view.
 
 Music theory handles what the qubits don't: staying in key, landing strong beats on chord tones, and moving each chord's voices as little as possible.
 
 ## What the controls do
 
-- **Entanglement** scales the entangling gates. Low: each hit is independent and chords step predictably. High: the bass locks to the kick, melodies run and the chords roam. A test in `tests/` checks that this really changes the measured correlation.
-- **Decoherence** adds depolarizing noise to the gates. The prepared state stops surviving, so you can hear a groove fall apart.
+- **Entanglement** scales the entangling gates. Low: each hit is independent and the chord walk marches straight round the ring. High: the bass follows the kick, melodies run and the chord walk doubles back on itself. A test in `tests/` checks that this really changes the measured correlation.
+- **Interference** winds phases between the qubits and then mixes them, so amplitudes add or cancel. This is the control that matters for honesty: rotations and controlled rotations alone give exactly the same results as classical coin flips that depend on each other. With interference at zero the groove can be reproduced that way, and a test proves it. With it on, the results can't.
+- **Decoherence** adds depolarizing noise to the gates. The interference washes out and the prepared state stops surviving, so you can hear a groove fall apart.
 - **Seed** makes runs reproducible. The same settings and seeds always give the same piece, and the page address names them exactly.
 - **Measure one layer again** re-runs only the chords, groove or melody and keeps the rest.
+
+Moving any of these re-composes while the music keeps playing from the same spot. Click a section label in the arrangement to loop it, and use the arrows beside Compose to go back to an earlier piece.
+
+## Styles
+
+Soft Club, 2-Step, Liquid, Trance, Hyperpop, R&B and Drift. Each has its own groove, chord voicings, patches and mix.
 
 ## Sound
 
@@ -62,10 +69,11 @@ python -m unittest discover tests
 ## Layout
 
 ```
-app.py            Flask server: the page and /api/compose
+app.py            Flask server: the page, /guide and /api/compose
 compose.py        command line composer
 qsound/           circuits, composer, music theory, styles
 static/js/        synthesizer, arrangement, views and exports
+templates/        the app and its guide
 scripts/          renders the logo in Blender
 tests/
 ```

@@ -8,11 +8,17 @@ const $ = (id) => document.getElementById(id);
 const player = new Player();
 let piece = null;
 let mix = null;
-let muted = new Set();
-let soloed = new Set();
+const muted = new Set();
+const soloed = new Set();
 let levels = {};
 let busy = false;
+let queued = false;
 let currentCircuit = null;
+let debounce = null;
+
+// pieces you've made this session, so you can go back to one you liked
+const past = [];
+let pastIndex = -1;
 
 const trackNames = { lead: "Lead", arp: "Arp", chords: "Chords", bass: "Bass", kick: "Kick", snare: "Snare", hat: "Hats" };
 
@@ -25,8 +31,18 @@ const arrangement = new Arrangement($("arrangement"), {
     updateLcd();
   },
   onSelect: (found) => showTrace(found),
+  onSection: (section) => toggleSectionLoop(section),
 });
-const circuitView = new CircuitView($("circuit-scroll"), $("circuit-size"), $("circuit-canvas"));
+const circuitView = new CircuitView($("circuit-scroll"), $("circuit-size"), $("circuit-canvas"), $("gate-info"));
+
+function toggleSectionLoop(section) {
+  const same = arrangement.loopSection?.name === section.name;
+  const next = same ? null : section;
+  player.setRegion(next ? [section.start * piece.stepsPerBar, section.end * piece.stepsPerBar] : null);
+  arrangement.setLoopSection(next);
+  $("trace").textContent = next ? `Looping ${section.name}. Click its label again to stop.` : "Playing the whole piece.";
+  updateLcd();
+}
 
 function buildTracks() {
   const box = $("tracks");
@@ -38,10 +54,10 @@ function buildTracks() {
     row.innerHTML = `
       <span class="track__name">${trackNames[t]}</span>
       <span class="track__btns">
-        <button class="track__btn" data-do="mute" aria-pressed="false" aria-label="Mute ${trackNames[t]}">M</button>
-        <button class="track__btn" data-do="solo" aria-pressed="false" aria-label="Solo ${trackNames[t]}">S</button>
+        <button class="track__btn${muted.has(t) ? " is-on" : ""}" data-do="mute" aria-pressed="${muted.has(t)}" aria-label="Mute ${trackNames[t]}" title="Mute">M</button>
+        <button class="track__btn${soloed.has(t) ? " is-on" : ""}" data-do="solo" aria-pressed="${soloed.has(t)}" aria-label="Solo ${trackNames[t]}" title="Solo">S</button>
       </span>
-      <input type="range" min="0" max="100" value="${Math.round((mix[t] ?? 0) * 100)}" aria-label="${trackNames[t]} volume">
+      <input type="range" min="0" max="100" value="${Math.round((levels[t] ?? 0) * 100)}" aria-label="${trackNames[t]} volume">
       <span class="track__meter"><i></i></span>`;
     row.querySelector("[data-do=mute]").addEventListener("click", (e) => toggle(muted, t, e.currentTarget));
     row.querySelector("[data-do=solo]").addEventListener("click", (e) => toggle(soloed, t, e.currentTarget));
@@ -79,39 +95,78 @@ function applyMix() {
 
 function setPiece(next, { keepMix = false } = {}) {
   const wasPlaying = player.playing;
+  const place = player.currentStep();
+  const looped = arrangement.loopSection?.name;
   piece = next;
-  if (!keepMix || !levels.kick) levels = defaultMix(piece.params.style);
+  if (!keepMix || levels.kick === undefined) levels = defaultMix(piece.params.style);
   mix = { ...levels };
   player.load(piece, mix);
   buildTracks();
-  for (const t of TRACKS) {
-    document.querySelector(`.track[data-track=${t}] [data-do=mute]`).classList.toggle("is-on", muted.has(t));
-    document.querySelector(`.track[data-track=${t}] [data-do=solo]`).classList.toggle("is-on", soloed.has(t));
-  }
   applyMix();
   arrangement.setPiece(piece);
+  // a section you're looping stays looped, so you can loop it and move a slider
+  const section = piece.sections.find((s) => s.name === looped);
+  if (section) {
+    player.setRegion([section.start * piece.stepsPerBar, section.end * piece.stepsPerBar]);
+    arrangement.setLoopSection(section);
+  }
   renderGrooveState();
   renderWalk();
   renderRecord();
   renderCircuitPicker();
   syncControls();
   $("trace").textContent = "Click any note to see which qubit decided it.";
+  writeHash();
+  updateHistoryButtons();
+  const [from, to] = player.bounds();
+  const resume = place >= from && place < to ? place : from;
+  // the music keeps going from the same spot, so you can hear what changed
+  if (wasPlaying) player.start(resume);
+  else player.position = resume;
+  setPlayingUi(player.playing || wasPlaying);
+  arrangement.frame(player.position);
   updateLcd();
-  if (wasPlaying) start();
+}
+
+function remember(next) {
+  past.splice(pastIndex + 1);
+  past.push(next);
+  if (past.length > 40) past.shift();
+  pastIndex = past.length - 1;
+}
+
+function updateHistoryButtons() {
+  $("back").disabled = pastIndex <= 0;
+  $("forward").disabled = pastIndex >= past.length - 1;
+}
+
+function stepHistory(by) {
+  clearTimeout(debounce);
+  const i = pastIndex + by;
+  if (i < 0 || i >= past.length) return;
+  pastIndex = i;
+  setPiece(past[i], { keepMix: true });
+  setStatus(`Piece ${i + 1} of ${past.length} this session.`);
+}
+
+function showBlurb() {
+  const checked = document.querySelector("input[name=style]:checked");
+  $("style-blurb").textContent = checked.dataset.blurb;
 }
 
 function syncControls() {
   const p = piece.params;
   document.querySelector(`input[name=style][value=${p.style}]`).checked = true;
+  showBlurb();
   $("key").value = p.key;
   $("mode").value = p.mode;
   $("bpm").value = p.bpm;
   $("bpm-out").textContent = p.bpm;
   document.querySelector(`input[name=bars][value="${p.bars}"]`).checked = true;
-  $("ent").value = Math.round(p.entanglement * 100);
-  $("ent-out").textContent = `${$("ent").value}%`;
-  $("noise").value = Math.round(p.noise * 100);
-  $("noise-out").textContent = `${$("noise").value}%`;
+  for (const [id, value] of [["ent", p.entanglement], ["phase", p.interference ?? 0.5], ["noise", p.noise]]) {
+    $(id).value = Math.round(value * 100);
+    $(`${id}-out`).textContent = `${$(id).value}%`;
+  }
   $("seed").value = p.seed;
 }
 
@@ -123,6 +178,7 @@ function currentParams(extra = {}) {
     bpm: Number($("bpm").value),
     bars: Number(document.querySelector("input[name=bars]:checked").value),
     entanglement: $("ent").value / 100,
+    interference: $("phase").value / 100,
     noise: $("noise").value / 100,
     seed: Number($("seed").value) || 0,
     ...extra,
@@ -134,13 +190,17 @@ function setStatus(text, error = false) {
   $("status").classList.toggle("is-error", error);
 }
 
-async function compose(extra = {}, { keepMix = false } = {}) {
-  if (busy) return;
+async function compose(extra = {}, { keepMix = true } = {}) {
+  // this run covers anything a slider had queued up
+  clearTimeout(debounce);
+  if (busy) {
+    queued = true;
+    return;
+  }
   busy = true;
   const button = $("compose");
   button.disabled = true;
   button.textContent = "Measuring…";
-  setStatus("Running the circuits.");
   const slow = setTimeout(() => setStatus("The server is waking up. This can take a minute, once."), 2500);
   try {
     const params = currentParams(extra);
@@ -152,9 +212,10 @@ async function compose(extra = {}, { keepMix = false } = {}) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "The server couldn't compose that.");
     setPiece(data, { keepMix });
+    remember(data);
+    updateHistoryButtons();
     const prov = data.provenance;
     setStatus(`${prov.totalQubits} qubits measured in ${prov.computeSeconds} s.`);
-    writeHash();
   } catch (e) {
     setStatus(e.message === "Failed to fetch" ? "Couldn't reach the server. Check your connection and try again." : e.message, true);
   } finally {
@@ -162,14 +223,23 @@ async function compose(extra = {}, { keepMix = false } = {}) {
     busy = false;
     button.disabled = false;
     button.textContent = "Compose";
+    if (queued) {
+      queued = false;
+      compose();
+    }
   }
+}
+
+function composeSoon() {
+  clearTimeout(debounce);
+  debounce = setTimeout(() => compose(), 260);
 }
 
 function writeHash() {
   const p = piece.params;
   const q = new URLSearchParams({
     style: p.style, key: p.key, mode: p.mode, bpm: p.bpm, bars: p.bars,
-    e: p.entanglement, n: p.noise, seed: p.seed,
+    e: p.entanglement, i: p.interference ?? 0.5, n: p.noise, seed: p.seed,
     sh: p.seeds.harmony, sg: p.seeds.groove, sm: p.seeds.melody,
   });
   history.replaceState(null, "", `#${q}`);
@@ -181,7 +251,7 @@ function readHash() {
   if (!q.get("style")) return null;
   return {
     style: q.get("style"), key: q.get("key"), mode: q.get("mode"), bpm: Number(q.get("bpm")), bars: Number(q.get("bars")),
-    entanglement: Number(q.get("e")), noise: Number(q.get("n")), seed: Number(q.get("seed")),
+    entanglement: Number(q.get("e")), interference: Number(q.get("i") ?? 0.5), noise: Number(q.get("n")), seed: Number(q.get("seed")),
     seeds: { harmony: Number(q.get("sh")), groove: Number(q.get("sg")), melody: Number(q.get("sm")) },
   };
 }
@@ -205,26 +275,55 @@ function pause() {
   setPlayingUi(false);
 }
 
-$("play").addEventListener("click", () => (player.playing ? pause() : start()));
+const togglePlay = () => (player.playing ? pause() : start());
+const toggleLoop = () => {
+  player.loop = !player.loop;
+  $("loop").classList.toggle("is-on", player.loop);
+  $("loop").setAttribute("aria-pressed", player.loop);
+};
+
+$("play").addEventListener("click", togglePlay);
 $("stop").addEventListener("click", () => {
   player.stop();
   setPlayingUi(false);
-  arrangement.frame(0);
+  arrangement.frame(player.position);
   updateLcd();
 });
-$("loop").addEventListener("click", (e) => {
-  player.loop = !player.loop;
-  e.currentTarget.classList.toggle("is-on", player.loop);
-  e.currentTarget.setAttribute("aria-pressed", player.loop);
-});
-player.onEnd = () => setPlayingUi(false);
+$("loop").addEventListener("click", toggleLoop);
+$("volume").addEventListener("input", (e) => player.setVolume(e.target.value / 100));
+player.onEnd = () => {
+  setPlayingUi(false);
+  arrangement.frame(0);
+  updateLcd();
+};
 
 document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
   const tag = e.target.tagName;
-  if (e.code === "Space" && tag !== "INPUT" && tag !== "SELECT" && tag !== "BUTTON") {
+  if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+  if ($("guide").open && e.key !== "?") return;
+  if (e.code === "Space") {
+    if (tag === "BUTTON") return;
     e.preventDefault();
-    if (player.playing) pause();
-    else start();
+    togglePlay();
+    return;
+  }
+  const bar = piece?.stepsPerBar ?? 16;
+  const actions = {
+    ArrowRight: () => player.seek(player.currentStep() + bar),
+    ArrowLeft: () => player.seek(Math.max(0, player.currentStep() - bar)),
+    c: () => compose(),
+    l: toggleLoop,
+    b: () => stepHistory(-1),
+    n: () => stepHistory(1),
+    g: openGuide,
+    "?": openGuide,
+  };
+  const act = actions[e.key];
+  if (act) {
+    e.preventDefault();
+    act();
+    updateLcd();
   }
 });
 
@@ -369,7 +468,7 @@ function showTrace(found) {
   }
   const { track, note } = found;
   const bar = Math.floor(note.s / piece.stepsPerBar) + 1;
-  const step = (note.s % piece.stepsPerBar) + 1;
+  const step = Math.floor(note.s % piece.stepsPerBar) + 1;
   const where = `${trackNames[track]}, bar ${bar} step ${step}.`;
   const src = note.src;
   box.textContent = "";
@@ -387,8 +486,8 @@ function showTrace(found) {
   const circuit = piece.circuits.find((c) => c.id === src.c);
   const label = circuit.labels[src.q];
   const stats = circuit.prepared
-    ? `Prepared at ${Math.round(circuit.prepared[src.q] * 100)}%, measured 1 in ${Math.round(circuit.measured[src.q] * 100)}% of ${circuit.shots} shots.`
-    : `Measured 1 in ${Math.round(circuit.measured[src.q] * 100)}% of ${circuit.shots} shots.`;
+    ? `The style asks for ${Math.round(circuit.prepared[src.q] * 100)}%. It measured 1 in ${Math.round(circuit.measured[src.q] * 100)}% of ${circuit.shots} shots.`
+    : `It measured 1 in ${Math.round(circuit.measured[src.q] * 100)}% of ${circuit.shots} shots.`;
   box.append(`${where} Qubit ${src.q} (${label}) measured 1 in shot ${src.shot}. ${stats} `);
   const link = document.createElement("button");
   link.textContent = "Show in circuit";
@@ -408,7 +507,7 @@ function selectTab(name) {
     t.setAttribute("aria-selected", on);
   });
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("is-on", v.dataset.view === name));
-  $("circuit-pick").hidden = name !== "circuit";
+  $("circuit-tools").hidden = name !== "circuit";
   if (name === "circuit") showCircuit(currentCircuit ?? piece.circuits[0].id);
 }
 document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => selectTab(t.dataset.tab)));
@@ -427,12 +526,20 @@ function showCircuit(id, highlight = null) {
   circuitView.set(piece.circuits.find((c) => c.id === id), highlight);
 }
 
+$("circuit-fit").addEventListener("click", (e) => {
+  const on = !circuitView.fit;
+  e.currentTarget.classList.toggle("is-on", on);
+  e.currentTarget.setAttribute("aria-pressed", on);
+  e.currentTarget.textContent = on ? "Zoom in" : "See it all";
+  circuitView.setFit(on);
+});
+
 function renderGrooveState() {
   const c = piece.circuits.find((x) => x.id === "groove");
   const voices = ["bass", "kick", "snare", "hat", "stab"];
   const names = { kick: "Kick", bass: "Bass", snare: "Snare", hat: "Hats", stab: "Stabs" };
   const order = ["kick", "snare", "hat", "bass", "stab"];
-  let html = `<p class="grid-note">Each cell is a qubit. Brightness: how often it measured 1. White line: the chance it was prepared with.</p><div class="state"><span></span>`;
+  let html = `<p class="grid-note">Each cell is a qubit. Brightness: how often it measured 1. White line: the chance the style asks for. The difference is entanglement and interference.</p><div class="state"><span></span>`;
   for (let s = 0; s < 16; s++) html += `<span class="state__num">${s + 1}</span>`;
   for (const v of order) {
     html += `<span class="state__label">${names[v]}</span>`;
@@ -440,7 +547,7 @@ function renderGrooveState() {
       const q = s * voices.length + voices.indexOf(v);
       const m = c.measured[q];
       const pr = c.prepared[q];
-      html += `<button class="state__cell" data-q="${q}" title="${c.labels[q]}: prepared ${Math.round(pr * 100)}%, measured ${Math.round(m * 100)}%" aria-label="${c.labels[q]}: prepared ${Math.round(pr * 100)} percent, measured ${Math.round(m * 100)} percent"><i style="opacity:${m.toFixed(3)}"></i><b style="transform:scaleX(${pr.toFixed(3)})"></b></button>`;
+      html += `<button class="state__cell" data-q="${q}" title="${c.labels[q]}: the style asks for ${Math.round(pr * 100)}%, measured ${Math.round(m * 100)}%" aria-label="${c.labels[q]}: the style asks for ${Math.round(pr * 100)} percent, measured ${Math.round(m * 100)} percent"><i style="opacity:${m.toFixed(3)}"></i><b style="transform:scaleX(${pr.toFixed(3)})"></b></button>`;
     }
   }
   html += "</div>";
@@ -465,7 +572,7 @@ function renderWalk() {
       .join("");
     return `<div class="walk__col"><span class="walk__chord">${w.chord}</span><div class="walk__bars">${bars}</div><span class="walk__foot">pos ${w.position}</span></div>`;
   });
-  $("view-walk").innerHTML = `<div class="walk">${cols.join("")}</div>`;
+  $("view-walk").innerHTML = `<p class="grid-note">Each chart is one quantum walk: where its shots landed on the ring of chords. White: the chord it picked.</p><div class="walk">${cols.join("")}</div>`;
 }
 
 function renderRecord() {
@@ -479,15 +586,15 @@ function renderRecord() {
     ["Melody shots", p.shots.melody],
     ["Walk shots", piece.circuits[2]?.shots ?? "–"],
     ["Entanglement", `${Math.round(p.entanglement * 100)}%`],
+    ["Interference", `${Math.round((p.interference ?? 0) * 100)}%`],
     ["Decoherence", `${Math.round(p.noise * 100)}%`],
     ["Seeds", `${p.seeds.harmony} · ${p.seeds.groove} · ${p.seeds.melody}`],
     ["Style", `${piece.styleName}, ${params.key} ${params.mode}`],
     ["QSound version", p.qsoundVersion],
-    ["Made", p.madeAt],
   ];
   $("view-record").innerHTML =
     `<dl class="record">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>` +
-    `<p class="record__note">${p.note} The same settings and seeds always give this exact piece, so anyone can check it. Copy the link, or export the circuits as OpenQASM.</p>`;
+    `<p class="record__note">${p.note} The same settings and seeds always give this exact piece, so anyone can check it.</p>`;
 }
 
 // ---- Controls
@@ -497,45 +604,100 @@ document.querySelectorAll("input[name=style]").forEach((r) => {
     $("bpm").value = r.dataset.bpm;
     $("bpm-out").textContent = r.dataset.bpm;
     $("mode").value = r.dataset.mode;
-    compose();
+    showBlurb();
+    compose({}, { keepMix: false });
   });
 });
-$("bpm").addEventListener("input", (e) => ($("bpm-out").textContent = e.target.value));
-$("ent").addEventListener("input", (e) => ($("ent-out").textContent = `${e.target.value}%`));
-$("noise").addEventListener("input", (e) => ($("noise-out").textContent = `${e.target.value}%`));
-$("compose").addEventListener("click", () => compose({}, { keepMix: true }));
+for (const [id, unit] of [["bpm", ""], ["ent", "%"], ["phase", "%"], ["noise", "%"]]) {
+  $(id).addEventListener("input", (e) => {
+    $(`${id}-out`).textContent = `${e.target.value}${unit}`;
+    composeSoon();
+  });
+}
+for (const id of ["key", "mode", "seed"]) $(id).addEventListener("change", composeSoon);
+document.querySelectorAll("input[name=bars]").forEach((r) => r.addEventListener("change", composeSoon));
+
+$("compose").addEventListener("click", () => compose());
+$("back").addEventListener("click", () => stepHistory(-1));
+$("forward").addEventListener("click", () => stepHistory(1));
 $("dice").addEventListener("click", () => {
   // a browser-side seed: it only says which run to do. The notes still come from the circuits.
   $("seed").value = Math.floor(Math.random() * 2147483646);
-  compose({}, { keepMix: true });
+  compose();
 });
 document.querySelectorAll("[data-layer]").forEach((b) => {
   b.addEventListener("click", () => {
     if (!piece) return;
     const seeds = { ...piece.params.seeds };
     seeds[b.dataset.layer] = seeds[b.dataset.layer] + 7919;
-    compose({ seeds }, { keepMix: true });
+    compose({ seeds });
   });
 });
 
 async function withButton(button, work) {
   const label = button.textContent;
-  button.disabled = true;
-  button.textContent = "…";
+  button.textContent = "Rendering…";
   try {
     await work();
   } catch (e) {
     setStatus(`Export failed: ${e.message}`, true);
   } finally {
-    button.disabled = false;
     button.textContent = label;
   }
 }
 
-$("x-wav").addEventListener("click", (e) => withButton(e.currentTarget, async () => saveWav(await renderOffline(piece, { ...mix }), piece)));
-$("x-midi").addEventListener("click", () => saveMidi(piece));
-$("x-qasm").addEventListener("click", () => saveQasm(piece));
-$("x-json").addEventListener("click", () => saveRecord(piece));
+$("x-wav").addEventListener("click", async () => {
+  const summary = $("export-menu").querySelector("summary");
+  $("export-menu").open = false;
+  await withButton(summary, async () => saveWav(await renderOffline(piece, { ...mix }), piece));
+});
+for (const [id, save] of [["x-midi", saveMidi], ["x-qasm", saveQasm], ["x-json", saveRecord]]) {
+  $(id).addEventListener("click", () => {
+    $("export-menu").open = false;
+    save(piece);
+  });
+}
+document.addEventListener("click", (e) => {
+  if (!$("export-menu").contains(e.target)) $("export-menu").open = false;
+});
+$("share").addEventListener("click", async () => {
+  try {
+    writeHash();
+    await navigator.clipboard.writeText(location.href);
+    setStatus("Link copied. It opens this exact piece.");
+  } catch {
+    setStatus("Copy the page address to share this exact piece.");
+  }
+});
+
+// ---- Guide
+
+function openGuide() {
+  if (!$("guide").open) $("guide").showModal();
+}
+$("open-guide").addEventListener("click", openGuide);
+$("close-guide").addEventListener("click", () => $("guide").close());
+$("guide").addEventListener("click", (e) => {
+  if (e.target === $("guide")) $("guide").close();
+  // the page address names the piece, so the guide's contents links scroll without touching it
+  const link = e.target.closest('a[href^="#"]');
+  if (link) {
+    e.preventDefault();
+    $("guide").querySelector(link.getAttribute("href"))?.scrollIntoView();
+  }
+});
+document.querySelectorAll("[data-show]").forEach((b) => {
+  b.addEventListener("click", () => {
+    $("guide").close();
+    if (b.dataset.tab) selectTab(b.dataset.tab);
+    const target = document.querySelector(b.dataset.show);
+    target?.scrollIntoView({ block: "nearest" });
+    target?.classList.remove("is-pointed");
+    void target?.offsetWidth;
+    target?.classList.add("is-pointed");
+    setTimeout(() => target?.classList.remove("is-pointed"), 2400);
+  });
+});
 
 // ---- Start: a real piece, already composed, so the app works before the server wakes up.
 
@@ -544,13 +706,15 @@ async function boot() {
   try {
     const demo = await (await fetch("/static/demo.json")).json();
     setPiece(demo);
-    setStatus("Composed earlier. Press Compose to run the circuits.");
+    remember(demo);
+    updateHistoryButtons();
+    setStatus("Already composed. Press Play.");
   } catch {
     setStatus("Press Compose to run the circuits.");
   }
   if (shared) {
     // a shared link names the exact piece
-    await compose({ ...shared });
+    await compose({ ...shared }, { keepMix: false });
   }
   fetch("/health").catch(() => {});
   requestAnimationFrame(loop);
