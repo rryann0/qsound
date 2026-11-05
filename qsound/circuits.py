@@ -1,10 +1,15 @@
 """The quantum part. Three kinds of circuit decide everything the music does.
 
 groove:  one qubit per drum, bass or chord hit in a bar. Each qubit is rotated so its chance of
-         measuring 1 matches the style, then entangled so hits depend on each other. Each shot is a bar.
-melody:  three qubits per 16th note: does a note start, which way it moves, how far. Entangling the
-         direction qubits makes runs. Each shot is a two-bar motif.
+         measuring 1 matches the style, entangled so hits depend on each other, then given a phase
+         and mixed again, so amplitudes interfere. Each shot is a bar.
+melody:  three qubits per 16th note: does a note start, which way it moves, how far. The same three
+         layers, and here the interference fringes shape the melody's arcs. Each shot is a two-bar motif.
 harmony: a coined quantum walk around the circle of fifths. Each measured position is the next chord.
+
+The interference layer matters. A circuit of only Ry and controlled-Ry gates, where no qubit is rotated
+after it has acted as a control, gives exactly the statistics of ordinary conditional coin flips. Phases
+followed by another rotation are what make the results impossible to get that way.
 """
 
 import math
@@ -18,7 +23,11 @@ VOICES = ["bass", "kick", "snare", "hat", "stab"]
 STEPS = 16
 MOTIF_SLOTS = 32
 WALK_POSITIONS = 8
-WALK_STEPS = 3
+WALK_STEPS = 5  # at 3 steps a quantum walk on this ring still matches a classical one exactly
+
+# How far each kind of qubit gets mixed in the interference layer, at full strength. Small for the
+# backbone of the beat, so it keeps its shape; larger where ghost notes can come and go.
+MIX = {"kick": 0.24, "snare": 0.24, "bass": 0.42, "hat": 0.6, "stab": 0.55}
 
 _chain = AerSimulator(method="matrix_product_state", max_parallel_threads=1)
 _state = AerSimulator(method="statevector", max_parallel_threads=1)
@@ -38,9 +47,10 @@ class Circuit:
         self.qc = QuantumCircuit(n, n)
         self.labels = labels
         self.gates = []
+        self.layer = None
 
     def _log(self, name, qubits, param=None):
-        g = {"g": name, "q": qubits}
+        g = {"g": name, "q": qubits, "l": self.layer}
         if param is not None:
             g["p"] = round(param, 4)
         self.gates.append(g)
@@ -48,6 +58,10 @@ class Circuit:
     def ry(self, theta, q):
         self.qc.ry(theta, q)
         self._log("ry", [q], theta)
+
+    def rz(self, theta, q):
+        self.qc.rz(theta, q)
+        self._log("rz", [q], theta)
 
     def cry(self, theta, c, t):
         """Controlled rotation, built from gates the chain simulator accepts."""
@@ -58,7 +72,9 @@ class Circuit:
         self._log("cry", [c, t], theta)
 
     def measure_all(self):
+        self.layer = "Measure"
         self.qc.measure(range(self.qc.num_qubits), range(self.qc.num_qubits))
+        self._log("measure", list(range(self.qc.num_qubits)))
 
     def describe(self, shots, method, memory, seed):
         ops = self.qc.count_ops()
@@ -83,7 +99,7 @@ def noise_model(level):
     if level <= 0:
         return None
     model = NoiseModel()
-    model.add_all_qubit_quantum_error(depolarizing_error(min(0.25, level * 0.12), 1), ["ry", "h"])
+    model.add_all_qubit_quantum_error(depolarizing_error(min(0.25, level * 0.12), 1), ["ry", "rz", "p"])
     model.add_all_qubit_quantum_error(depolarizing_error(min(0.45, level * 0.3), 2), ["cx"])
     return model
 
@@ -116,17 +132,19 @@ def leap_q(slot):
     return 2 * MOTIF_SLOTS + slot
 
 
-def groove_circuit(style, entanglement):
+def groove_circuit(style, entanglement, interference=0.0):
     labels = [f"{v} {s + 1}" for s in range(STEPS) for v in VOICES]
     circuit = Circuit("groove", "Groove", STEPS * len(VOICES), labels)
 
     def q(step, voice):
         return step * len(VOICES) + VOICES.index(voice)
 
+    circuit.layer = "Prepare"
     for step in range(STEPS):
         for voice in VOICES:
             circuit.ry(angle(style[voice][step]), q(step, voice))
 
+    circuit.layer = "Entangle"
     lock = style["lock"]
     for step in range(STEPS):
         circuit.cry(entanglement * lock["kick_bass"], q(step, "kick"), q(step, "bass"))
@@ -135,21 +153,32 @@ def groove_circuit(style, entanglement):
         circuit.cry(entanglement * lock["hat_stab"], q(step, "hat"), q(step, "stab"))
         if step < STEPS - 1:
             circuit.cry(entanglement * lock["stab_kick"], q(step, "stab"), q(step + 1, "bass"))
+
+    if interference > 0:
+        circuit.layer = "Interfere"
+        # the phase winds along the bar, so hits move in and out of step with it
+        turns = 2 + 6 * interference
+        for step in range(STEPS):
+            for voice in VOICES:
+                circuit.rz(2 * math.pi * turns * step / STEPS, q(step, voice))
+                circuit.ry(interference * MIX[voice], q(step, voice))
     circuit.measure_all()
     return circuit
 
 
-def melody_circuit(style, entanglement):
+def melody_circuit(style, entanglement, interference=0.0):
     # Three neighbor chains in a row: all the note qubits, then direction, then leap.
     labels = [f"{w} {s + 1}" for w in ("note", "dir", "leap") for s in range(MOTIF_SLOTS)]
     circuit = Circuit("melody", "Melody", MOTIF_SLOTS * 3, labels)
     rhythm = style["lead"]
 
+    circuit.layer = "Prepare"
     for s in range(MOTIF_SLOTS):
         circuit.ry(angle(rhythm[s % STEPS]), note_q(s))
         circuit.ry(math.pi / 2, dir_q(s))
         circuit.ry(angle(0.26), leap_q(s))
 
+    circuit.layer = "Entangle"
     for s in range(MOTIF_SLOTS - 1):
         # a note makes the next step less likely to start one
         circuit.cry(-entanglement * 0.9, note_q(s), note_q(s + 1))
@@ -157,11 +186,23 @@ def melody_circuit(style, entanglement):
         circuit.cry(entanglement * 1.1, dir_q(s), dir_q(s + 1))
         # a leap makes another leap less likely
         circuit.cry(-entanglement * 0.8, leap_q(s), leap_q(s + 1))
+
+    if interference > 0:
+        circuit.layer = "Interfere"
+        # A Ramsey experiment: direction qubits start balanced, so the fringes here have full contrast.
+        # As the phase winds, notes tend upward, then downward. That is the melody's arc.
+        turns = 1 + 2 * interference
+        for s in range(MOTIF_SLOTS):
+            phase = 2 * math.pi * turns * s / MOTIF_SLOTS
+            circuit.rz(phase, dir_q(s))
+            circuit.ry(interference * math.pi / 2, dir_q(s))
+            circuit.rz(phase, note_q(s))
+            circuit.ry(interference * 0.5, note_q(s))
     circuit.measure_all()
     return circuit
 
 
-def walk_circuit(index, start, entanglement):
+def walk_circuit(index, start, entanglement, interference=0.0):
     """A coined quantum walk on a ring of chords, starting from the chord before this one."""
     position_qubits = 3
     labels = [f"position {i}" for i in range(position_qubits)] + ["coin"]
@@ -172,6 +213,7 @@ def walk_circuit(index, start, entanglement):
         if (start >> b) & 1:
             qc.x(b)
             circuit._log("x", [b])
+    circuit.layer = "Start"
     # Start the coin balanced, so the walk spreads both ways round the ring.
     qc.ry(math.pi / 2, coin)
     qc.s(coin)
@@ -179,7 +221,14 @@ def walk_circuit(index, start, entanglement):
     circuit._log("s", [coin])
     # At full strength this coin is a Hadamard. Weaker, the walk mixes less and keeps its direction.
     theta = entanglement * math.pi / 2
-    for _ in range(WALK_STEPS):
+    # A phase that grows round the ring pushes the walker's wave one way, like a field on a particle.
+    ramp = interference * 1.6
+    for step in range(WALK_STEPS):
+        circuit.layer = f"Step {step + 1}"
+        if ramp > 0:
+            for b in range(position_qubits):
+                qc.p(ramp * 2**b, b)
+                circuit._log("p", [b], ramp * 2**b)
         qc.z(coin)
         qc.ry(theta, coin)
         circuit._log("z", [coin])
@@ -196,6 +245,7 @@ def walk_circuit(index, start, entanglement):
         qc.mcx([coin, 0, 1], 2)
         qc.x(coin)
         circuit._log("dec", [coin, 0, 1, 2])
+    circuit.layer = "Measure"
     qc.measure(range(position_qubits), range(position_qubits))
     circuit._log("measure", list(range(position_qubits)))
     return circuit
@@ -206,16 +256,16 @@ def _shots(clean, noise):
     return 10 if noise > 0 else clean
 
 
-def run_groove(style, entanglement, noise, seed):
-    circuit = groove_circuit(style, entanglement)
+def run_groove(style, entanglement, interference, noise, seed):
+    circuit = groove_circuit(style, entanglement, interference)
     return circuit, _run(_chain, circuit, _shots(64, noise), seed, noise)
 
 
-def run_melody(style, entanglement, noise, seed):
-    circuit = melody_circuit(style, entanglement)
+def run_melody(style, entanglement, interference, noise, seed):
+    circuit = melody_circuit(style, entanglement, interference)
     return circuit, _run(_chain, circuit, _shots(32, noise), seed, noise)
 
 
-def run_walk(index, start, entanglement, noise, seed):
-    circuit = walk_circuit(index, start, entanglement)
+def run_walk(index, start, entanglement, interference, noise, seed):
+    circuit = walk_circuit(index, start, entanglement, interference)
     return circuit, _run(_state, circuit, _shots(64, noise), seed, noise)

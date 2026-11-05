@@ -35,6 +35,22 @@ const PATCHES = {
     kick: { from: 220, to: 54, sweep: 0.05, decay: 0.2, click: 0.95 },
     snare: "clap", hatDecay: 0.1, bass: "offbeat", chords: "supersawGate", stab: "supersawGate", lead: "supersaw", arp: "pluck",
   },
+  hyperpop: {
+    room: 1.2, roomTone: 0.85, duck: 0.36, delayBeats: 0.75, delayFeedback: 0.4,
+    mix: { lead: 0.9, arp: 0.66, chords: 0.76, bass: 0.22, kick: 0.56, snare: 0.86, hat: 0.72 },
+    send: { lead: [0.18, 0.3], arp: [0.2, 0.36], chords: [0.16, 0.08], snare: [0.12, 0], hat: [0.02, 0], bass: [0, 0], kick: [0, 0] },
+    kick: { from: 260, to: 62, sweep: 0.035, decay: 0.12, click: 1 },
+    snare: "hyperSnare", hatDecay: 0.018, bass: "eight08", chords: "hyperSaw", stab: "hyperSaw", lead: "hyperLead", arp: "chip",
+    kickDrive: 3.2, bassDrive: 3.6, crush: { levels: 14, mix: 0.45 }, master: { input: 0.7, clip: 1.9, air: 5.5 },
+  },
+  rnb: {
+    room: 2.4, roomTone: 0.42, duck: 0.8, delayBeats: 0.75, delayFeedback: 0.32,
+    mix: { lead: 0.95, arp: 0.74, chords: 0.56, bass: 0.36, kick: 0.62, snare: 1, hat: 0.78 },
+    send: { lead: [0.36, 0.32], arp: [0.4, 0.3], chords: [0.22, 0.04], snare: [0.3, 0], hat: [0.06, 0], bass: [0, 0], kick: [0, 0] },
+    kick: { from: 120, to: 48, sweep: 0.06, decay: 0.28, click: 0.25 },
+    snare: "snap", hatDecay: 0.042, bass: "warm", chords: "ep", stab: "ep", lead: "vox", arp: "nylon",
+    late: { snare: 0.022, hat: 0.008 }, master: { input: 0.62, clip: 1.02, air: 2.5 },
+  },
   drift: {
     room: 6.5, roomTone: 0.42, duck: 1, delayBeats: 1.5, delayFeedback: 0.5,
     mix: { lead: 0.85, arp: 0.85, chords: 0.22, bass: 0.36, kick: 0.42, snare: 0.6, hat: 0.5 },
@@ -46,6 +62,24 @@ const PATCHES = {
 
 export function defaultMix(style) {
   return { ...PATCHES[style].mix };
+}
+
+// Rooms and noise take a moment to build, so each audio context keeps them.
+const built = new WeakMap();
+function cached(ctx, key, make) {
+  if (!built.has(ctx)) built.set(ctx, new Map());
+  const store = built.get(ctx);
+  if (!store.has(key)) store.set(key, make());
+  return store.get(key);
+}
+
+function crushCurve(levels) {
+  const curve = new Float32Array(4096);
+  for (let i = 0; i < curve.length; i++) {
+    const x = (i / (curve.length - 1)) * 2 - 1;
+    curve[i] = Math.round(x * levels) / levels;
+  }
+  return curve;
 }
 
 function makeImpulse(ctx, seconds, tone) {
@@ -87,7 +121,8 @@ export class Engine {
     this.stepSeconds = 60 / piece.bpm / 4;
     this.beat = 60 / piece.bpm;
     this.buses = {};
-    this.noise = this.makeNoise();
+    this.lfos = [];
+    this.noise = cached(ctx, "noise", () => this.makeNoise());
     this.build(mix, destination ?? ctx.destination);
   }
 
@@ -108,7 +143,8 @@ export class Engine {
 
     // Master: clean the sub, glue, then catch the peaks.
     const input = ctx.createGain();
-    input.gain.value = 0.6;
+    const tone = patch.master ?? {};
+    input.gain.value = tone.input ?? 0.6;
     const highpass = ctx.createBiquadFilter();
     highpass.type = "highpass";
     highpass.frequency.value = 28;
@@ -124,7 +160,7 @@ export class Engine {
     const air = ctx.createBiquadFilter();
     air.type = "highshelf";
     air.frequency.value = 8000;
-    air.gain.value = 3.5;
+    air.gain.value = tone.air ?? 3.5;
     const glue = ctx.createDynamicsCompressor();
     glue.threshold.value = -15;
     glue.ratio.value = 2;
@@ -132,7 +168,7 @@ export class Engine {
     glue.release.value = 0.16;
     glue.knee.value = 10;
     const clip = ctx.createWaveShaper();
-    clip.curve = softClipCurve(1.05);
+    clip.curve = softClipCurve(tone.clip ?? 1.05);
     clip.oversample = "4x";
     const limiter = ctx.createDynamicsCompressor();
     limiter.threshold.value = -2;
@@ -148,7 +184,7 @@ export class Engine {
 
     // Room
     const reverb = ctx.createConvolver();
-    reverb.buffer = makeImpulse(ctx, patch.room, patch.roomTone);
+    reverb.buffer = cached(ctx, `room-${patch.room}-${patch.roomTone}`, () => makeImpulse(ctx, patch.room, patch.roomTone));
     const reverbReturn = ctx.createGain();
     reverbReturn.gain.value = 0.9;
     reverb.connect(reverbReturn).connect(input);
@@ -220,10 +256,24 @@ export class Engine {
     // Grit on the drums and bass, so they read on small speakers
     for (const name of ["kick", "bass"]) {
       const shaper = ctx.createWaveShaper();
-      shaper.curve = softClipCurve(name === "kick" ? 1.8 : 1.5);
+      shaper.curve = softClipCurve(name === "kick" ? patch.kickDrive ?? 1.8 : patch.bassDrive ?? 1.5);
       shaper.oversample = "2x";
       shaper.connect(this.buses[name].gain);
       this.buses[name].input = shaper;
+    }
+
+    // Bit-crushed grit, mixed in alongside the clean lead and arp
+    if (patch.crush) {
+      for (const name of ["lead", "arp"]) {
+        const crushed = ctx.createWaveShaper();
+        crushed.curve = crushCurve(patch.crush.levels);
+        const wet = ctx.createGain();
+        wet.gain.value = patch.crush.mix;
+        const split = ctx.createGain();
+        split.connect(this.buses[name].input);
+        split.connect(crushed).connect(wet).connect(this.buses[name].gain);
+        this.buses[name].input = split;
+      }
     }
 
     const analyser = ctx.createAnalyser();
@@ -249,6 +299,7 @@ export class Engine {
       depth.gain.value = 0.0028;
       lfo.connect(depth).connect(delay.delayTime);
       lfo.start();
+      this.lfos.push(lfo);
       const panner = ctx.createStereoPanner();
       panner.pan.value = pan;
       const wet = ctx.createGain();
@@ -256,6 +307,22 @@ export class Engine {
       input.connect(delay).connect(panner).connect(wet).connect(target);
     });
     return input;
+  }
+
+  /** Stops everything this engine left running. */
+  dispose() {
+    for (const lfo of this.lfos) {
+      try {
+        lfo.stop();
+      } catch {
+        /* already stopped */
+      }
+    }
+    try {
+      this.output.disconnect();
+    } catch {
+      /* already gone */
+    }
   }
 
   setTrackGain(name, value) {
@@ -272,7 +339,7 @@ export class Engine {
 
   /** Schedules one note. `at` is the context time of step 0. */
   play(track, note, at, destination) {
-    const t = at + this.stepTime(note.s);
+    const t = at + this.stepTime(note.s) + (this.patch.late?.[track] ?? 0);
     const dur = note.d * this.stepSeconds;
     const out = destination?.[track] ?? this.buses[track].input;
     switch (track) {
@@ -291,7 +358,7 @@ export class Engine {
         this.hat(t, note, out);
         break;
       case "bass":
-        this[`bass_${this.patch.bass}`](t, dur, note.m, note.v, out);
+        this[`bass_${this.patch.bass}`](t, dur, note.m, note.v, out, note);
         break;
       case "chords":
         // long notes are the pad; short ones are stabs
@@ -441,7 +508,55 @@ export class Engine {
     n.connect(hp).connect(air).connect(g).connect(pan).connect(out);
   }
 
+  hyperSnare(t, v, out) {
+    this.crack(t, v * 0.8, out);
+    this.clap(t, v * 0.6, out);
+  }
+
+  /** A finger snap: a sharp burst, a little body, and the room does the rest. */
+  snap(t, v, out) {
+    const n = this.noiseAt(t, t + 0.12);
+    const bp = this.filter("bandpass", 2600, 1.3);
+    const g = this.gain();
+    g.gain.setValueAtTime(v * 2.2, t);
+    g.gain.setTargetAtTime(0.0001, t + 0.004, 0.036);
+    n.connect(bp).connect(g).connect(out);
+    this.rim(t, v * 0.5, out);
+  }
+
   // ---- bass
+
+  /** A distorted 808 that slides into its note from the one before. */
+  bass_eight08(t, dur, m, v, out, note) {
+    const f = freq(m);
+    const len = Math.max(dur, 0.12);
+    const end = t + len + 0.2;
+    const body = this.osc("sine", f, t, end);
+    body.frequency.setValueAtTime(note.g ? freq(note.g) : f * 1.6, t);
+    body.frequency.exponentialRampToValueAtTime(f, t + (note.g ? 0.07 : 0.025));
+    const g = this.gain();
+    this.shape(g.gain, t, v, 0.003, 0.4, 0.82, len, 0.05);
+    body.connect(g).connect(out);
+  }
+
+  /** A warm, round bass that leans into each note. */
+  bass_warm(t, dur, m, v, out, note) {
+    const f = freq(m);
+    const len = Math.max(dur * 0.92, 0.14);
+    const end = t + len + 0.25;
+    const body = this.osc("sine", f, t, end);
+    const edge = this.osc("triangle", f, t, end, 2);
+    for (const o of [body, edge]) {
+      o.frequency.setValueAtTime(note.g ? freq(note.g) : f, t);
+      o.frequency.exponentialRampToValueAtTime(f, t + (note.g ? 0.09 : 0.002));
+    }
+    const lp = this.filter("lowpass", 620, 0.7);
+    const g = this.gain();
+    this.shape(g.gain, t, v, 0.012, 0.3, 0.8, len, 0.09);
+    const mixEdge = this.gain(0.5);
+    edge.connect(mixEdge).connect(lp).connect(g);
+    body.connect(g).connect(out);
+  }
 
   bass_round(t, dur, m, v, out) {
     const f = freq(m);
@@ -585,7 +700,126 @@ export class Engine {
     lp.connect(g).connect(out);
   }
 
+  /** A wall of detuned saws, cut short. */
+  chord_hyperSaw(t, dur, m, v, out) {
+    const f = freq(m);
+    const len = Math.max(dur * 0.72, 0.04);
+    const end = t + len + 0.1;
+    const lp = this.filter("lowpass", 9500, 0.8);
+    const g = this.gain();
+    this.shape(g.gain, t, v * 0.2, 0.002, 0.08, 0.8, len, 0.02);
+    [-30, -18, -7, 0, 7, 18, 30].forEach((d) => this.osc("sawtooth", f, t, end, d).connect(lp));
+    this.osc("sawtooth", f * 2, t, end, 11).connect(this.gain(0.4)).connect(lp);
+    lp.connect(g).connect(out);
+  }
+
+  /** Electric piano: a soft FM body, a short metal tine, slow tremolo, and a held organ under long chords. */
+  chord_ep(t, dur, m, v, out) {
+    const f = freq(m);
+    const long = dur > this.beat * 2;
+    const len = long ? dur : Math.max(dur, 0.2);
+    const end = t + len + 1.2;
+    const pan = this.ctx.createStereoPanner();
+    const lfo = this.osc("sine", 3.6, t, end);
+    const sway = this.gain(0.32);
+    lfo.connect(sway).connect(pan.pan);
+    pan.connect(out);
+    this.fm(t, len, f, v * 0.62, pan, { ratio: 1, index: 1.9, decay: long ? 1.1 : 0.5, sustain: 0.3, release: 0.42 });
+    this.fm(t, 0.05, f * 4, v * 0.24, pan, { ratio: 3.5, index: 0.8, decay: 0.08, sustain: 0.02, release: 0.1 });
+    if (long) {
+      const g = this.gain();
+      this.shape(g.gain, t, v * 0.14, this.beat * 0.9, 0.5, 0.9, dur, this.beat);
+      this.osc("sine", f, t, end).connect(g);
+      this.osc("sine", f * 2, t, end, 3).connect(this.gain(0.3)).connect(g);
+      g.connect(out);
+    }
+  }
+
   // ---- lead and arp voices
+
+  /** Two vowel-shaped resonances over a soft source: a synth that nearly sings. */
+  lead_vox(t, dur, m, v, out) {
+    const f = freq(m);
+    const len = Math.max(dur * 0.96, 0.14);
+    const end = t + len + 0.5;
+    const src = this.gain(1);
+    const a = this.osc("sawtooth", f, t, end);
+    const b = this.osc("triangle", f, t, end, 5);
+    for (const o of [a, b]) {
+      o.frequency.setValueAtTime(f * 0.943, t); // scoop up from a semitone below, like a singer
+      o.frequency.exponentialRampToValueAtTime(f, t + 0.07);
+    }
+    const lfo = this.osc("sine", 5.2, t, end);
+    const depth = this.gain(0);
+    depth.gain.setValueAtTime(0, t);
+    depth.gain.linearRampToValueAtTime(16, t + 0.45);
+    lfo.connect(depth);
+    depth.connect(a.detune);
+    depth.connect(b.detune);
+    a.connect(this.gain(0.75)).connect(src);
+    b.connect(this.gain(0.7)).connect(src);
+    const g = this.gain();
+    this.shape(g.gain, t, v * 0.8, 0.035, 0.2, 0.82, len, 0.2);
+    const low = this.filter("bandpass", 720, 3.5);
+    const high = this.filter("bandpass", 1500, 5);
+    const body = this.gain(1.5);
+    src.connect(low).connect(g);
+    src.connect(high).connect(body).connect(g);
+    src.connect(this.filter("lowpass", 900)).connect(this.gain(0.3)).connect(g);
+    src.connect(this.filter("bandpass", 2800, 2.5)).connect(this.gain(0.8)).connect(g); // a little breath
+    g.connect(out);
+  }
+
+  lead_nylon(t, dur, m, v, out, pan) {
+    this.fm(t, Math.min(dur, 0.1), freq(m), v * 0.8, out, { ratio: 2, index: 1.2, decay: 0.22, sustain: 0.04, release: 0.32, pan });
+  }
+
+  /** Pitched-up and processed: snaps into each note from above, with a fast wobble. */
+  lead_hyperLead(t, dur, m, v, out) {
+    const f = freq(m);
+    const len = Math.max(dur * 0.92, 0.05);
+    const end = t + len + 0.16;
+    const a = this.osc("sawtooth", f, t, end, -9);
+    const b = this.osc("square", f, t, end, 9);
+    for (const o of [a, b]) {
+      o.frequency.setValueAtTime(f * 1.09, t);
+      o.frequency.exponentialRampToValueAtTime(f, t + 0.022);
+    }
+    const lfo = this.osc("sine", 7.2, t, end);
+    const depth = this.gain(14);
+    lfo.connect(depth);
+    depth.connect(a.detune);
+    depth.connect(b.detune);
+    const g = this.gain();
+    this.shape(g.gain, t, v * 0.42, 0.002, 0.08, 0.85, len, 0.04);
+    const src = this.gain(0.5);
+    a.connect(src);
+    b.connect(src);
+    const low = this.filter("bandpass", 1150, 1.6);
+    const high = this.filter("bandpass", 3100, 2.4);
+    src.connect(low).connect(g);
+    src.connect(high).connect(g);
+    src.connect(this.filter("highpass", 5000)).connect(this.gain(0.4)).connect(g);
+    g.connect(out);
+  }
+
+  lead_chip(t, dur, m, v, out, pan) {
+    const f = freq(m + 12);
+    const end = t + 0.2;
+    const a = this.osc("square", f, t, end);
+    a.frequency.setValueAtTime(f * 1.5, t);
+    a.frequency.setValueAtTime(f, t + 0.015);
+    const g = this.gain();
+    g.gain.setValueAtTime(v * 0.3, t);
+    g.gain.setTargetAtTime(0.0001, t + 0.006, 0.03);
+    let node = a.connect(g);
+    if (pan) {
+      const p = this.ctx.createStereoPanner();
+      p.pan.value = pan;
+      node = node.connect(p);
+    }
+    node.connect(out);
+  }
 
   fm(t, dur, f, v, out, { ratio, index, decay, sustain, release, pan = 0, detune = 0 }) {
     const len = Math.max(dur, 0.08);
@@ -720,6 +954,8 @@ export class Player {
     this.mix = null;
     this.playing = false;
     this.loop = true;
+    this.region = null;
+    this.volume = 1;
     this.position = 0;
     this.timer = null;
   }
@@ -730,51 +966,50 @@ export class Player {
   }
 
   load(piece, mix) {
-    const wasPlaying = this.playing;
-    this.stop();
+    this.pause();
     this.piece = piece;
     this.mix = mix;
     this.events = eventsOf(piece);
     this.totalSteps = piece.bars * piece.stepsPerBar;
-    this.engine = null;
+    this.region = null;
     this.position = 0;
-    return wasPlaying;
   }
 
-  build() {
-    const ctx = this.ensureContext();
-    if (this.engine) {
-      try {
-        this.engine.output.disconnect();
-      } catch {
-        /* already gone */
-      }
-    }
-    this.engine = new Engine(ctx, this.piece, this.mix);
+  /** The part of the piece that repeats: a section, or the whole thing. */
+  bounds() {
+    return this.region ?? [0, this.totalSteps];
   }
 
   async start(fromStep = this.position) {
     if (!this.piece) return;
     const ctx = this.ensureContext();
     if (ctx.state === "suspended") await ctx.resume();
-    this.build();
+    this.engine = new Engine(ctx, this.piece, this.mix);
+    this.engine.output.gain.value = 0.92 * this.volume;
     this.position = fromStep;
     this.anchor = ctx.currentTime + 0.08 - this.engine.stepSeconds * fromStep;
-    this.cursor = this.events.findIndex((e) => e.note.s >= fromStep);
-    if (this.cursor < 0) this.cursor = this.events.length;
+    this.cursor = this.cursorAt(fromStep);
     this.playing = true;
     this.tick();
     this.timer = setInterval(() => this.tick(), 30);
   }
 
+  cursorAt(step) {
+    const i = this.events.findIndex((e) => e.note.s >= step);
+    return i < 0 ? this.events.length : i;
+  }
+
   tick() {
     const { ctx, engine } = this;
+    if (!engine) return;
+    const [from, to] = this.bounds();
     const horizon = ctx.currentTime + 0.22;
     for (;;) {
-      if (this.cursor >= this.events.length) {
-        const endTime = this.anchor + this.totalSteps * engine.stepSeconds;
+      const e = this.events[this.cursor];
+      if (!e || e.note.s >= to) {
+        const endTime = this.anchor + to * engine.stepSeconds;
         if (horizon < endTime) return;
-        if (!this.loop) {
+        if (!this.loop && !this.region) {
           if (ctx.currentTime >= endTime) {
             this.pause();
             this.position = 0;
@@ -782,11 +1017,10 @@ export class Player {
           }
           return;
         }
-        this.anchor = endTime;
-        this.cursor = 0;
+        this.anchor = endTime - from * engine.stepSeconds;
+        this.cursor = this.cursorAt(from);
         continue;
       }
-      const e = this.events[this.cursor];
       if (this.anchor + engine.stepTime(e.note.s) > horizon) return;
       engine.play(e.track, e.note, this.anchor);
       this.cursor++;
@@ -798,24 +1032,17 @@ export class Player {
     this.position = this.currentStep();
     this.playing = false;
     clearInterval(this.timer);
-    if (this.engine) {
-      const out = this.engine.output;
-      out.gain.setTargetAtTime(0, this.ctx.currentTime, 0.012);
-      const old = this.engine;
-      setTimeout(() => {
-        try {
-          old.output.disconnect();
-        } catch {
-          /* already gone */
-        }
-      }, 120);
-      this.engine = null;
+    const old = this.engine;
+    this.engine = null;
+    if (old) {
+      old.output.gain.setTargetAtTime(0, this.ctx.currentTime, 0.012);
+      setTimeout(() => old.dispose(), 120);
     }
   }
 
   stop() {
     this.pause();
-    this.position = 0;
+    this.position = this.region ? this.region[0] : 0;
   }
 
   seek(step) {
@@ -825,15 +1052,31 @@ export class Player {
     if (was) this.start(this.position);
   }
 
+  setRegion(region) {
+    this.region = region;
+    if (region) {
+      const here = this.currentStep();
+      if (here < region[0] || here >= region[1]) this.seek(region[0]);
+    }
+  }
+
   currentStep() {
     if (!this.playing || !this.engine) return this.position;
-    const raw = (this.ctx.currentTime - this.anchor) / this.engine.stepSeconds;
-    return Math.max(0, raw % this.totalSteps);
+    const [from, to] = this.bounds();
+    let raw = (this.ctx.currentTime - this.anchor) / this.engine.stepSeconds;
+    // the scheduler wraps a moment before the sound does
+    if (raw < from) raw += to - from;
+    return Math.max(0, Math.min(this.totalSteps - 0.001, raw));
   }
 
   setGain(track, value) {
     this.mix[track] = value;
     this.engine?.setTrackGain(track, value);
+  }
+
+  setVolume(value) {
+    this.volume = value;
+    if (this.engine) this.engine.output.gain.setTargetAtTime(0.92 * value, this.ctx.currentTime, 0.015);
   }
 }
 

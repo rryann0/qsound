@@ -64,7 +64,7 @@ def _degree_on_ring(position, mode):
     return 0
 
 
-def compose_harmony(key, mode, style, entanglement, noise, seed, bars):
+def compose_harmony(key, mode, style, entanglement, interference, noise, seed, bars):
     """Walks the ring for two four-bar progressions, used in turn. Each one starts on the home chord,
     and each later chord is the first measured outcome that moves away from the chord before it."""
     size = style["chord_size"]
@@ -76,7 +76,7 @@ def compose_harmony(key, mode, style, entanglement, noise, seed, bars):
         if i in (0, 4):
             position, shot_used, counts = 0, None, None
         else:
-            circuit, memory = qc.run_walk(i, position, entanglement, noise, walk_seed)
+            circuit, memory = qc.run_walk(i, position, entanglement, interference, noise, walk_seed)
             records.append(circuit.describe(len(memory), "statevector", memory, walk_seed))
             tally = Counter(int(m, 2) for m in memory)
             counts = [tally.get(p, 0) for p in range(qc.WALK_POSITIONS)]
@@ -98,8 +98,8 @@ def compose_harmony(key, mode, style, entanglement, noise, seed, bars):
     return chords, records, steps
 
 
-def compose_groove(style, entanglement, noise, seed, chords, bars, sections, key, mode):
-    circuit, memory = qc.run_groove(style, entanglement, noise, seed)
+def compose_groove(style, entanglement, interference, noise, seed, chords, bars, sections, key, mode):
+    circuit, memory = qc.run_groove(style, entanglement, interference, noise, seed)
     voices = qc.VOICES
     tracks = {"kick": [], "snare": [], "hat": [], "bass": [], "chords": []}
 
@@ -128,6 +128,11 @@ def compose_groove(style, entanglement, noise, seed, chords, bars, sections, key
                 if voice in active and shot[step * len(voices) + voices.index(voice)]:
                     accent = 1.0 if step % 4 == 0 else (0.8 if step % 2 == 0 else 0.62)
                     tracks[voice].append({"s": start, "d": 1, "m": {"kick": 36, "snare": 38, "hat": 42}[voice], "v": round(vel[voice] * accent, 3), "src": src(voice)})
+                    # a hat roll: when this step's stab qubit is also 1, and the style allows it
+                    stab_on = shot[step * len(voices) + voices.index("stab")]
+                    if voice == "hat" and style.get("rolls") and stab_on and step % 2 == 1 and accent * style["rolls"] > 0.15:
+                        for i, offset in enumerate((0.25, 0.5, 0.75)):
+                            tracks["hat"].append({"s": start + offset, "d": 0.25, "m": 42, "v": round(vel["hat"] * (0.55 + 0.12 * i), 3), "src": src("stab")})
             if "bass" in active and shot[step * len(voices) + voices.index("bass")]:
                 # the root, unless the stab qubit on this step is also 1: then the fifth
                 degree = chord["degree"] + (4 if shot[step * len(voices) + voices.index("stab")] and step % 4 else 0)
@@ -141,20 +146,37 @@ def compose_groove(style, entanglement, noise, seed, chords, bars, sections, key
         if style["chord_style"] == "pad":
             for m in chord["pitches"]:
                 tracks["chords"].append({"s": bar * STEPS, "d": STEPS, "m": m, "v": 0.55, "src": {"c": "harmony", "slot": chord["slot"]}})
+        elif style["chord_style"] == "keys":
+            for m in chord["pitches"]:
+                tracks["chords"].append({"s": bar * STEPS, "d": STEPS, "m": m, "v": 0.5, "src": {"c": "harmony", "slot": chord["slot"]}})
         for step in range(STEPS):
             if shot[step * len(voices) + voices.index("stab")] and (style["chord_style"] != "pad" or step % 4 == 2):
-                length = {"stab": 2, "gate": 1, "pad": 2}[style["chord_style"]]
-                for m in chord["pitches"]:
-                    tracks["chords"].append({
-                        "s": bar * STEPS + step, "d": length, "m": m + (12 if style["chord_style"] == "pad" else 0),
-                        "v": 0.7 if style["chord_style"] != "pad" else 0.3,
-                        "src": {"c": "groove", "q": step * len(voices) + voices.index("stab"), "shot": shot_index},
-                    })
+                length = {"stab": 2, "gate": 1, "pad": 2, "keys": 2}[style["chord_style"]]
+                soft = style["chord_style"] in ("pad", "keys")
+                record = {"c": "groove", "q": step * len(voices) + voices.index("stab"), "shot": shot_index}
+                # a glitch edit: in a fill bar, the chord stutters in 32nd notes
+                hits = [0, 0.5, 1.0, 1.5] if style.get("stutter") and shot_index > 0 and step >= 12 else [0]
+                for offset in hits:
+                    for m in chord["pitches"]:
+                        tracks["chords"].append({
+                            "s": bar * STEPS + step + offset, "d": 0.5 if len(hits) > 1 else length,
+                            "m": m + (12 if style["chord_style"] == "pad" else 0),
+                            "v": 0.3 if soft else 0.7, "src": record,
+                        })
+
+    # each bass note rings until the next one, up to the style's limit, and can slide into it
+    limit = style.get("bass_len", 2)
+    bass = tracks["bass"]
+    for i, note in enumerate(bass):
+        following = bass[i + 1]["s"] - note["s"] if i + 1 < len(bass) else limit
+        note["d"] = max(1, min(limit, following))
+        if style.get("glide") and i and bass[i - 1]["s"] + bass[i - 1]["d"] >= note["s"] and bass[i - 1]["m"] != note["m"]:
+            note["g"] = bass[i - 1]["m"]
     return tracks, circuit, memory
 
 
-def compose_melody(style, entanglement, noise, seed, chords, bars, sections, key, mode):
-    circuit, memory = qc.run_melody(style, entanglement, noise, seed)
+def compose_melody(style, entanglement, interference, noise, seed, chords, bars, sections, key, mode):
+    circuit, memory = qc.run_melody(style, entanglement, interference, noise, seed)
     octave = style["lead_octave"]
     max_len = style["lead_max"]
     low = midi_to_degree(key, mode, degree_to_midi(key, mode, 0, octave) - 7, octave)
@@ -196,6 +218,15 @@ def compose_melody(style, entanglement, noise, seed, chords, bars, sections, key
                 "src": {"c": "melody", "q": qc.note_q(slot), "shot": shot_index},
             }
             if "lead" in ACTIVE[_section_at(sections, bar)]:
+                if style.get("stutter") and z and step_in_bar % 4 == 3:
+                    # a leap on a weak step becomes a glitchy ratchet of the same note
+                    for offset in (0.33, 0.66):
+                        lead.append({**note, "s": start + offset, "d": 0.3, "v": 0.6})
+                    note["d"] = 0.3
+                    lead.append(note)
+                    lead.sort(key=lambda x: x["s"])
+                    last = None
+                    continue
                 lead.append(note)
                 last = note
             else:
@@ -234,7 +265,7 @@ def _marginals(memory, n):
     return [round(t / len(memory), 3) for t in totals]
 
 
-def compose(style="softclub", key="A", mode=None, bpm=None, bars=16, entanglement=0.8, noise=0.0, seed=1197, seeds=None):
+def compose(style="softclub", key="A", mode=None, bpm=None, bars=16, entanglement=0.8, interference=0.5, noise=0.0, seed=1197, seeds=None):
     """Compose a piece. Seeds for each layer can be given separately, so one layer can be re-measured alone."""
     if style not in STYLES:
         raise ValueError(f"Unknown style: {style}")
@@ -245,15 +276,16 @@ def compose(style="softclub", key="A", mode=None, bpm=None, bars=16, entanglemen
     bpm = int(bpm or spec["bpm"])
     bars = int(bars)
     entanglement = max(0.0, min(1.0, float(entanglement)))
+    interference = max(0.0, min(1.0, float(interference)))
     noise = max(0.0, min(1.0, float(noise)))
     seed = int(seed)
     seeds = {"harmony": seed, "groove": seed + 1000, "melody": seed + 2000, **(seeds or {})}
 
     started = time.perf_counter()
     sections = _sections(bars)
-    chords, walk_records, walk_steps = compose_harmony(key, mode, spec, entanglement, noise, int(seeds["harmony"]), bars)
-    tracks, groove_c, groove_m = compose_groove(spec, entanglement, noise, int(seeds["groove"]), chords, bars, sections, key, mode)
-    lead, arp, melody_c, melody_m = compose_melody(spec, entanglement, noise, int(seeds["melody"]), chords, bars, sections, key, mode)
+    chords, walk_records, walk_steps = compose_harmony(key, mode, spec, entanglement, interference, noise, int(seeds["harmony"]), bars)
+    tracks, groove_c, groove_m = compose_groove(spec, entanglement, interference, noise, int(seeds["groove"]), chords, bars, sections, key, mode)
+    lead, arp, melody_c, melody_m = compose_melody(spec, entanglement, interference, noise, int(seeds["melody"]), chords, bars, sections, key, mode)
     tracks["lead"] = lead
     tracks["arp"] = arp
 
@@ -268,7 +300,7 @@ def compose(style="softclub", key="A", mode=None, bpm=None, bars=16, entanglemen
     return {
         "version": 2,
         "params": {"style": style, "key": key, "mode": mode, "bpm": bpm, "bars": bars,
-                   "entanglement": entanglement, "noise": noise, "seed": seed, "seeds": seeds},
+                   "entanglement": entanglement, "interference": interference, "noise": noise, "seed": seed, "seeds": seeds},
         "styleName": spec["name"],
         "bpm": bpm,
         "swing": spec["swing"],
@@ -284,6 +316,7 @@ def compose(style="softclub", key="A", mode=None, bpm=None, bars=16, entanglemen
             "methods": {"groove": "matrix_product_state", "melody": "matrix_product_state", "harmony": "statevector"},
             "noise": noise,
             "entanglement": entanglement,
+            "interference": interference,
             "seeds": seeds,
             "totalQubits": sum(c["qubits"] for c in circuit_list),
             "circuits": len(circuit_list),
