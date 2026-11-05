@@ -80,12 +80,12 @@
         <select id="key">{% for k in keys %}<option {% if k == 'A' %}selected{% endif %}>{{ k }}</option>{% endfor %}</select>
       </label>
       <label class="field">Mode
-        <select id="mode">{% for m in modes %}<option>{{ m }}</option>{% endfor %}</select>
+        <select id="mode">{% for m in modes %}<option {% if m == styles[0].mode %}selected{% endif %}>{{ m }}</option>{% endfor %}</select>
       </label>
     </div>
 
-    <label class="field">Tempo <output id="bpm-out">122</output>
-      <input type="range" id="bpm" min="60" max="190" value="122">
+    <label class="field">Tempo <output id="bpm-out">{{ styles[0].bpm }}</output>
+      <input type="range" id="bpm" min="60" max="190" value="{{ styles[0].bpm }}">
     </label>
 
     <fieldset class="segmented">

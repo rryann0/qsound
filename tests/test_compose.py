@@ -197,6 +197,15 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.get_json()["bars"], 8)
 
+    def test_hyperpop_is_what_you_land_on(self):
+        self.assertEqual(next(iter(STYLES)), "hyperpop")
+        page = self.client.get("/").get_data(as_text=True)
+        first = page[page.index('name="style"'):].split(">")[0]
+        self.assertIn('value="hyperpop"', first)
+        self.assertIn("checked", first)
+        with open("static/demo.json", encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["params"]["style"], "hyperpop")
+
     def test_bad_input(self):
         for body in ({"style": "nope"}, {"key": "H"}, {"bars": 9}, {"seed": -1}, {"bpm": 900}, {"noise": "x"}, {"interference": float("nan")}, {"seeds": 3}):
             self.assertEqual(self.client.post("/api/compose", json=body).status_code, 400, body)

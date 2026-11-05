@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compose from the command line and save everything needed to prove how a piece was made.
 
-    python compose.py --style softclub --key A --seed 1197 --out pieces/first
+    python compose.py --style hyperpop --key A --seed 1197 --out pieces/first
 
 Writes first.json (the whole piece and its provenance) and first.qasm (every circuit).
 """
@@ -11,11 +11,11 @@ import json
 from pathlib import Path
 
 from qsound import compose
-from qsound.styles import STYLES
+from qsound.styles import DEFAULT_STYLE, STYLES
 from qsound.theory import KEYS, MODES
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--style", choices=STYLES, default="softclub")
+parser.add_argument("--style", choices=STYLES, default=DEFAULT_STYLE)
 parser.add_argument("--key", choices=KEYS, default="A")
 parser.add_argument("--mode", choices=MODES)
 parser.add_argument("--bpm", type=int)

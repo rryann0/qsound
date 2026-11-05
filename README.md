@@ -32,7 +32,7 @@ Moving any of these re-composes while the music keeps playing from the same spot
 
 ## Styles
 
-Soft Club, 2-Step, Liquid, Trance, Hyperpop, R&B and Drift. Each has its own groove, chord voicings, patches and mix. Hyperpop and R&B also have their own arrangements. Hyperpop flips between verses, sweet hooks and crushed breakdowns, with a hard-tuned synthesized voice and drums and bass clipped together. R&B comps its chords, pushes them ahead of the bar, and moves its bass around.
+Hyperpop, Soft Club, 2-Step, Liquid, Trance, R&B and Drift. Each has its own groove, chord voicings, patches and mix. Hyperpop and R&B also have their own arrangements. Hyperpop flips between verses, sweet hooks and crushed breakdowns, with a hard-tuned synthesized voice and drums and bass clipped together. R&B comps its chords, pushes them ahead of the bar, and moves its bass around.
 
 ## Sound
 

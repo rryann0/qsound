@@ -7,7 +7,7 @@ import time
 from collections import Counter
 
 from . import circuits as qc
-from .styles import STYLES
+from .styles import DEFAULT_STYLE, STYLES
 from .theory import MODES, chord_name, degree_to_midi, midi_to_degree, stack, triad_quality, voice_chord
 
 STEPS = qc.STEPS
@@ -427,7 +427,7 @@ def _marginals(memory, n):
     return [round(t / len(memory), 3) for t in totals]
 
 
-def compose(style="softclub", key="A", mode=None, bpm=None, bars=16, entanglement=0.8, interference=0.5, noise=0.0, seed=1197, seeds=None):
+def compose(style=DEFAULT_STYLE, key="A", mode=None, bpm=None, bars=16, entanglement=0.8, interference=0.5, noise=0.0, seed=1197, seeds=None):
     """Compose a piece. Seeds for each layer can be given separately, so one layer can be re-measured alone."""
     if style not in STYLES:
         raise ValueError(f"Unknown style: {style}")

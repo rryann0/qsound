@@ -6,7 +6,7 @@ import os
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
 from qsound import compose
-from qsound.styles import STYLES
+from qsound.styles import DEFAULT_STYLE, STYLES
 from qsound.theory import KEYS, MODES
 
 app = Flask(__name__)
@@ -47,7 +47,7 @@ def health():
 def api_compose():
     data = request.get_json(silent=True) or {}
     try:
-        style = data.get("style", "softclub")
+        style = data.get("style", DEFAULT_STYLE)
         key = data.get("key", "A")
         mode = data.get("mode") or None
         bars = int(data.get("bars", 16))

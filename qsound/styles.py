@@ -1,6 +1,50 @@
 """Styles. Each number is a prepared probability: the chance a qubit measures 1 on that 16th-note step."""
 
+DEFAULT_STYLE = "hyperpop"
+
+# The first style here is the first one listed in the app.
 STYLES = {
+    "hyperpop": {
+        "name": "Hyperpop",
+        "blurb": "Sugary hooks, crushed drums, glitches",
+        "bpm": 158,
+        "mode": "minor",
+        "swing": 0.50,
+        "chord_size": 3,
+        "chord_style": "hyper",
+        # half-time bounce: the snare lands on beat 3, and the kick and 808 skip around it
+        "kick": [.98, .03, .05, .45, .03, .05, .52, .05, .08, .05, .62, .06, .03, .34, .08, .24],
+        "bass": [.95, .03, .06, .40, .03, .05, .48, .05, .10, .05, .60, .05, .05, .32, .08, .22],
+        "snare": [.01, .02, .01, .03, .03, .02, .03, .06, .97, .04, .02, .05, .06, .12, .10, .24],
+        "hat": [.92, .50, .92, .50, .92, .50, .92, .55, .92, .50, .92, .50, .92, .55, .92, .65],
+        "stab": [.82, .05, .08, .70, .05, .08, .72, .08, .10, .08, .68, .08, .55, .08, .10, .45],
+        "lead": [.72, .14, .42, .34, .24, .42, .44, .14, .52, .14, .42, .34, .24, .44, .46, .22],
+        "lock": {"kick_bass": 1.8, "kick_snare": -1.0, "snare_hat": -0.2, "hat_stab": 0.3, "stab_kick": 0.2},
+        "lead_octave": 5, "lead_max": 3, "arp": True, "arp_every": 1,
+        "rolls": 0.75, "stutter": True, "glide": True, "bass_len": 6, "bass_octave": 1,
+        "scale": "pentatonic", "vowels": True, "form": [0, 0, 1, 0], "low_voice": "Verse",
+        # the breakdown has its own circuit: a double-time beat and palm-muted guitar chugs
+        "crash": {
+            "kick": [.98, .30, .30, .55, .98, .30, .30, .55, .98, .30, .30, .55, .98, .40, .55, .70],
+            "bass": [.98, .10, .10, .30, .70, .10, .10, .30, .85, .10, .10, .30, .70, .10, .30, .40],
+            "snare": [.02, .02, .02, .04, .97, .04, .04, .10, .02, .06, .06, .12, .97, .10, .25, .45],
+            "hat": [.60, .10, .60, .10, .60, .10, .60, .10, .60, .10, .60, .10, .60, .10, .60, .20],
+            "stab": [.96, .72, .40, .78, .30, .72, .85, .30, .72, .40, .85, .72, .30, .78, .72, .85],
+            "lock": {"kick_bass": 1.2, "kick_snare": -0.8, "snare_hat": -0.2, "hat_stab": 0.2, "stab_kick": 0.2},
+        },
+        # the chance the beat breaks on each 16th, rising toward the end of the bar
+        "glitch": [.03, .08, .10, .20, .05, .10, .20, .32, .05, .10, .20, .32, .08, .24, .42, .62],
+        "arrangement": {
+            8: [("Hook", 0, 4), ("Crash", 4, 8)],
+            16: [("Verse", 0, 4), ("Hook", 4, 8), ("Crash", 8, 12), ("Hook", 12, 16)],
+            32: [("Verse", 0, 4), ("Hook", 4, 12), ("Crash", 12, 16), ("Verse", 16, 20), ("Hook", 20, 24), ("Crash", 24, 28), ("Hook", 28, 32)],
+        },
+        "active": {
+            "Verse": {"chords", "hat", "bass", "snare", "lead", "arp"},
+            "Hook": {"chords", "hat", "kick", "bass", "snare", "lead", "arp"},
+            "Crash": {"chords", "hat", "kick", "bass", "snare"},
+        },
+    },
     "softclub": {
         "name": "Soft Club",
         "blurb": "Warm, late-night house",
@@ -68,47 +112,6 @@ STYLES = {
         "lead": [.72, .04, .30, .30, .10, .25, .30, .05, .40, .05, .30, .25, .10, .30, .35, .08],
         "lock": {"kick_bass": -1.6, "kick_snare": -0.8, "snare_hat": -0.3, "hat_stab": 0.2, "stab_kick": 0.1},
         "lead_octave": 5, "lead_max": 4, "arp": True,
-    },
-    "hyperpop": {
-        "name": "Hyperpop",
-        "blurb": "Sugary hooks, crushed drums, glitches",
-        "bpm": 158,
-        "mode": "minor",
-        "swing": 0.50,
-        "chord_size": 3,
-        "chord_style": "hyper",
-        # half-time bounce: the snare lands on beat 3, and the kick and 808 skip around it
-        "kick": [.98, .03, .05, .45, .03, .05, .52, .05, .08, .05, .62, .06, .03, .34, .08, .24],
-        "bass": [.95, .03, .06, .40, .03, .05, .48, .05, .10, .05, .60, .05, .05, .32, .08, .22],
-        "snare": [.01, .02, .01, .03, .03, .02, .03, .06, .97, .04, .02, .05, .06, .12, .10, .24],
-        "hat": [.92, .50, .92, .50, .92, .50, .92, .55, .92, .50, .92, .50, .92, .55, .92, .65],
-        "stab": [.82, .05, .08, .70, .05, .08, .72, .08, .10, .08, .68, .08, .55, .08, .10, .45],
-        "lead": [.72, .14, .42, .34, .24, .42, .44, .14, .52, .14, .42, .34, .24, .44, .46, .22],
-        "lock": {"kick_bass": 1.8, "kick_snare": -1.0, "snare_hat": -0.2, "hat_stab": 0.3, "stab_kick": 0.2},
-        "lead_octave": 5, "lead_max": 3, "arp": True, "arp_every": 1,
-        "rolls": 0.75, "stutter": True, "glide": True, "bass_len": 6, "bass_octave": 1,
-        "scale": "pentatonic", "vowels": True, "form": [0, 0, 1, 0], "low_voice": "Verse",
-        # the breakdown has its own circuit: a double-time beat and palm-muted guitar chugs
-        "crash": {
-            "kick": [.98, .30, .30, .55, .98, .30, .30, .55, .98, .30, .30, .55, .98, .40, .55, .70],
-            "bass": [.98, .10, .10, .30, .70, .10, .10, .30, .85, .10, .10, .30, .70, .10, .30, .40],
-            "snare": [.02, .02, .02, .04, .97, .04, .04, .10, .02, .06, .06, .12, .97, .10, .25, .45],
-            "hat": [.60, .10, .60, .10, .60, .10, .60, .10, .60, .10, .60, .10, .60, .10, .60, .20],
-            "stab": [.96, .72, .40, .78, .30, .72, .85, .30, .72, .40, .85, .72, .30, .78, .72, .85],
-            "lock": {"kick_bass": 1.2, "kick_snare": -0.8, "snare_hat": -0.2, "hat_stab": 0.2, "stab_kick": 0.2},
-        },
-        # the chance the beat breaks on each 16th, rising toward the end of the bar
-        "glitch": [.03, .08, .10, .20, .05, .10, .20, .32, .05, .10, .20, .32, .08, .24, .42, .62],
-        "arrangement": {
-            8: [("Hook", 0, 4), ("Crash", 4, 8)],
-            16: [("Verse", 0, 4), ("Hook", 4, 8), ("Crash", 8, 12), ("Hook", 12, 16)],
-            32: [("Verse", 0, 4), ("Hook", 4, 12), ("Crash", 12, 16), ("Verse", 16, 20), ("Hook", 20, 24), ("Crash", 24, 28), ("Hook", 28, 32)],
-        },
-        "active": {
-            "Verse": {"chords", "hat", "bass", "snare", "lead", "arp"},
-            "Hook": {"chords", "hat", "kick", "bass", "snare", "lead", "arp"},
-            "Crash": {"chords", "hat", "kick", "bass", "snare"},
-        },
     },
     "rnb": {
         "name": "R&B",
