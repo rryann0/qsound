@@ -326,7 +326,7 @@ class QuantumMusicGenerator:
         rhythm = self.generate_rhythm(num_notes)
         
         # Apply rhythm to melody - get all elements first
-        all_elements = list(melody.flat.notesAndRests)
+        all_elements = list(melody.flatten().notesAndRests)
         # Apply rhythm pattern
         for i, (n, r) in enumerate(zip(all_elements[:num_notes], rhythm[:num_notes])):
             if r == 0 and isinstance(n, note.Note):

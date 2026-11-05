@@ -56,7 +56,7 @@ def generate_music():
             )
             rhythm = generator.generate_rhythm(num_notes)
             # Get all notes from the stream
-            all_elements = list(music_stream.flat.notesAndRests)
+            all_elements = list(music_stream.flatten().notesAndRests)
             # Apply rhythm pattern - create a new list with notes/rests
             new_elements = []
             for i, (n, r) in enumerate(zip(all_elements[:num_notes], rhythm[:num_notes])):
@@ -74,10 +74,10 @@ def generate_music():
         temp_file.close()
         music_stream.write('midi', fp=temp_file.name)
         
-        # Get note information - use flat.notes to get all notes from the stream
+        # Get note information - use flatten() to get all notes from the stream
         notes_info = []
         # Get all notes and rests from the stream
-        all_elements = list(music_stream.flat.notesAndRests)
+        all_elements = list(music_stream.flatten().notesAndRests)
         
         # Debug: print what we found
         # print(f"Total elements in stream: {len(all_elements)}")
